@@ -1,0 +1,6 @@
+# Dependencies for local AI agent (using Ollama instead of OpenAI)
+# This version runs 100% locally - no cloud APIs needed
+
+langchain>=0.1.0
+langchain-community>=0.0.13
+python-dotenv>=1.0.0
