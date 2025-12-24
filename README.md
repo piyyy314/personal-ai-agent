@@ -2,6 +2,20 @@
 
 This project contains a minimal personal AI agent using LangChain + OpenAI.
 
+## 🚀 Two Ways to Run
+
+### Option 1: Cloud-Based (OpenAI)
+Uses OpenAI API - easy to set up but requires API key and sends data to cloud.
+
+### Option 2: 100% Local & Private (Ollama) ⭐ RECOMMENDED
+✅ **Completely private** - no data leaves your computer  
+✅ **No restrictions** - use uncensored open-source models  
+✅ **No API costs** - free to run 24/7  
+✅ **Works offline** - no internet needed after setup
+
+👉 **[See SETUP_LOCAL.md for full local setup guide](SETUP_LOCAL.md)**
+
+
 Features
 - Conversational memory (in-process)
 - Optional web search via SerpAPI
