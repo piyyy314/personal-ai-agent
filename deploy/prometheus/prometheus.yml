@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'personal-ai-agent'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - 'alert_rules.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Personal AI Agent
+  - job_name: 'agent'
+    static_configs:
+      - targets: ['agent:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # AlertManager monitoring
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
