@@ -1,0 +1,20 @@
+route:
+  receiver: default
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: critical
+
+receivers:
+  - name: default
+    email_configs:
+      - to: ${ALERT_EMAIL:-alerts@example.com}
+        from: noreply@personal-ai-agent
+        smarthost: ${ALERT_SMTP_HOST:-smtp:587}
+        auth_username: ${ALERT_SMTP_USERNAME:-user}
+        auth_password: ${ALERT_SMTP_PASSWORD:-password}
+
+  - name: critical
+    webhook_configs:
+      - url: ${ALERT_WEBHOOK_URL:-http://alert-webhook-handler:5001/alerts}
+        send_resolved: true

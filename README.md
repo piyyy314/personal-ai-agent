@@ -1,13 +1,17 @@
 # Personal AI Agent (minimal LangChain example)
 
-This project contains a minimal personal AI agent using LangChain + OpenAI.
+This project contains a minimal personal AI agent using LangChain + OpenAI with optional FastAPI service, metrics, and alerting.
 
-## 🚀 Two Ways to Run
+## 🚀 Ways to Run
 
-### Option 1: Cloud-Based (OpenAI)
+### Option 1: FastAPI service (production-ready, monitored)
+- Requires OpenAI key (or swap LLM implementation).
+- Exposes `/v1/chat`, `/healthz`, and `/metrics` for Prometheus.
+
+### Option 2: Cloud-Based CLI (OpenAI)
 Uses OpenAI API - easy to set up but requires API key and sends data to cloud.
 
-### Option 2: 100% Local & Private (Ollama) ⭐ RECOMMENDED
+### Option 3: 100% Local & Private (Ollama) ⭐ RECOMMENDED
 ✅ **Completely private** - no data leaves your computer  
 ✅ **No restrictions** - use uncensored open-source models  
 ✅ **No API costs** - free to run 24/7  
@@ -31,7 +35,7 @@ Requirements
 - (Optional) SERPAPI_API_KEY for web search
 - (Optional) Docker
 
-Quick start (local, CLI)
+Quick start (FastAPI service)
 1. Create project folder and copy files from this repo.
 2. Create and activate a virtual environment:
    python -m venv .venv
@@ -39,8 +43,13 @@ Quick start (local, CLI)
    .venv\Scripts\activate      # Windows
 3. Install deps:
    pip install -r requirements.txt
-4. Copy `.env.example` to `.env` and add your keys.
-5. Run:
+4. Copy `.env.example` to `.env` and add your keys (set `API_AUTH_TOKEN` to enable auth).
+5. Run the API:
+   uvicorn server:app --host 0.0.0.0 --port 8000
+6. Test:
+   curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" -d '{"prompt":"hello"}' http://localhost:8000/v1/chat
+
+CLI mode
    python main.py
 
 Create downloadable ZIP
@@ -56,13 +65,19 @@ Create downloadable ZIP
 Docker (optional)
 1. Build:
    docker build -t personal-ai-agent:latest .
-2. Run (must set env vars in host or docker run):
-   docker run --env-file .env -it personal-ai-agent:latest
+2. Run API (must set env vars in host or docker run):
+   docker run --env-file .env -p 8000:8000 -p 9000:9000 personal-ai-agent:latest
 
-Security & privacy
+Security, monitoring & privacy
 - Do not commit `.env` or secrets to source control.
+- Set `API_AUTH_TOKEN` to enforce API-key auth; rotate when incidents occur.
+- Prometheus/Loki/Grafana stack included under `deploy/` with alert rules for downtime, error rate, slow P95, and suspicious access.
 - For higher privacy, swap the LLM wrapper to a local model (e.g., LlamaCPP) and remove cloud API keys.
 - Avoid adding tools that run arbitrary shell commands unless you add strict safeguards.
+
+Production deployment
+- Use the provided monitored stack: see `deploy/PRODUCTION.md` and `deploy/docker-compose.prod.yml`.
+- Metrics are at `/metrics`, health at `/healthz`, and structured logs ship to Loki via Promtail.
 
 Next steps / Enhancements
 - Persistent memory (Chroma/Weaviate)
