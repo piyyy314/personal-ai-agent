@@ -62,4 +62,6 @@ LABEL org.opencontainers.image.title="Personal AI Agent" \
       org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.vendor="Personal AI Agent Project"
 
-CMD ["python", "main.py"]
+EXPOSE 8000
+
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]

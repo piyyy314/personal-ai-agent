@@ -18,12 +18,17 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - **High Availability**: Kubernetes deployment, health checks, auto-restart
 - **Incident Response**: Forensic tools, emergency procedures, runbooks
 
-## 🚀 Two Ways to Run
+## 🚀 Ways to Run
 
-### Option 1: Cloud-Based (OpenAI)
+### Option 1: FastAPI service (production-ready, monitored)
+- Requires OpenAI key (or swap LLM implementation).
+- Exposes `/v1/chat`, `/healthz`, and `/metrics` for Prometheus.
+- Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
+
+### Option 2: Cloud-Based CLI (OpenAI)
 Uses OpenAI API - easy to set up but requires API key and sends data to cloud.
 
-### Option 2: 100% Local & Private (Ollama) ⭐ RECOMMENDED
+### Option 3: 100% Local & Private (Ollama) ⭐ RECOMMENDED
 ✅ **Completely private** - no data leaves your computer
 ✅ **No restrictions** - use uncensored open-source models
 ✅ **No API costs** - free to run 24/7
@@ -65,8 +70,18 @@ The production deployment includes:
    ```bash
    pip install -r requirements.txt
    ```
-4. Copy `.env.example` to `.env` and add your keys.
-5. Run:
+4. Copy `.env.example` to `.env` and add your keys (set `API_AUTH_TOKEN` to enable auth).
+5. Run the API:
+   ```bash
+   uvicorn server:app --host 0.0.0.0 --port 8000
+   ```
+6. Test:
+   ```bash
+   curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+     -d '{"prompt":"hello"}' http://localhost:8000/v1/chat
+   ```
+
+Or run in CLI mode:
    ```bash
    python main.py
    ```
@@ -81,14 +96,16 @@ The production deployment includes:
    # Edit .env with your configuration
    ```
 
-2. Start the full stack:
+2. Start the full monitoring stack:
    ```bash
-   docker-compose up -d
+   cd deploy
+   docker-compose -f docker-compose.prod.yml up -d
    ```
 
 3. Access monitoring:
-   - Agent Health: http://localhost:8080/health
-   - Metrics: http://localhost:8080/metrics
+   - Agent API: http://localhost:8000
+   - Agent Metrics: http://localhost:8000/metrics
+   - Agent Health: http://localhost:8000/healthz
    - Grafana: http://localhost:3000 (admin/admin)
    - Prometheus: http://localhost:9090
    - AlertManager: http://localhost:9093
@@ -101,10 +118,20 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive deployment guide.
 kubectl apply -f deploy/kubernetes/deployment.yml
 ```
 
+### Docker (standalone)
+
+1. Build:
+   ```bash
+   docker build -t personal-ai-agent:latest .
+   ```
+2. Run API (must set env vars in host or docker run):
+   ```bash
+   docker run --env-file .env -p 8000:8000 personal-ai-agent:latest
+   ```
+
 ## Monitoring Endpoints
 
-- `/health` - Liveness probe (is the service running?)
-- `/ready` - Readiness probe (is the service ready for traffic?)
+- `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
 
 ## Health Check
@@ -122,6 +149,9 @@ Run the health check script:
 - No secrets in source control
 - GDPR and SOC2 compliant design
 - Incident response procedures documented
+- Set `API_AUTH_TOKEN` to enforce API-key auth; rotate when incidents occur
+- For higher privacy, swap the LLM wrapper to a local model (e.g., LlamaCPP) and remove cloud API keys
+- Avoid adding tools that run arbitrary shell commands unless you add strict safeguards
 
 ## Compliance
 
@@ -135,6 +165,7 @@ See [COMPLIANCE.md](COMPLIANCE.md) for details.
 
 ## Documentation
 
+- [deploy/PRODUCTION.md](deploy/PRODUCTION.md) - Production deployment runbook
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Comprehensive deployment guide
 - [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) - Emergency procedures
 - [COMPLIANCE.md](COMPLIANCE.md) - Compliance and security details
@@ -142,26 +173,18 @@ See [COMPLIANCE.md](COMPLIANCE.md) for details.
 
 ## Metrics Available
 
-- `agent_requests_total` - Total requests processed
-- `agent_requests_success` - Successful requests
-- `agent_requests_failed` - Failed requests
-- `agent_response_time_seconds` - Response time histogram
-- `agent_active_sessions` - Current active sessions
-- `agent_uptime_seconds` - Service uptime
-- `agent_compliance_violations` - Compliance issues detected
-- `agent_security_events` - Security events logged
+- `agent_requests_total` - Total requests by status and source
+- `agent_request_latency_seconds` - Response time histogram
+- `agent_security_events_total` - Security/anomaly events
+- `agent_session_status` - 1 when running, 0 when stopped
 
 ## Alerting
 
 Alerts are configured for:
-- **Critical**: Agent down, high error rate, security/compliance violations
-- **Warning**: High response time, resource constraints
-- **Info**: Deployments, configuration changes
+- **Critical**: Agent down, security/compliance violations
+- **Warning**: High error rate, high response time, resource constraints
 
-Alerts route to:
-- Slack channels
-- PagerDuty (for critical alerts)
-- Email notifications
+Alerts route to email and webhook (configure via `ALERT_*` env vars in `.env`).
 
 ## Emergency Procedures
 
@@ -186,12 +209,12 @@ docker cp loki:/loki ./backup/loki-$(date +%Y%m%d)
 ### Agent won't start
 ```bash
 docker-compose logs agent
-curl http://localhost:8080/health
+curl http://localhost:8000/healthz
 ```
 
 ### Check metrics
 ```bash
-curl http://localhost:8080/metrics
+curl http://localhost:8000/metrics
 ```
 
 ### View logs

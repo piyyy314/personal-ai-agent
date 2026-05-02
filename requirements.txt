@@ -3,3 +3,7 @@ openai>=0.27.0
 python-dotenv>=1.0.0
 serpapi>=2.0.0
 gradio>=3.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.23.0
+prometheus-client>=0.20.0
+python-json-logger>=2.0.7
