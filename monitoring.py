@@ -19,12 +19,6 @@ from prometheus_client import (
 )
 
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-AUDIT_LOG_PATH = os.getenv("AUDIT_LOG_PATH")
-METRICS_PORT = int(os.getenv("METRICS_PORT", "9000"))
-METRICS_HOST = os.getenv("METRICS_HOST", "0.0.0.0")
-
-
 # Prometheus metrics
 REQUEST_COUNTER = Counter(
     "agent_requests_total",
@@ -67,38 +61,45 @@ class JsonFormatter(logging.Formatter):
 
 def configure_logging() -> None:
     """Configure root and audit loggers with JSON output."""
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    audit_log_path = os.getenv("AUDIT_LOG_PATH")
+
     formatter = JsonFormatter()
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
 
     root = logging.getLogger()
     root.handlers.clear()
-    root.setLevel(LOG_LEVEL)
+    root.setLevel(log_level)
     root.addHandler(stream_handler)
 
     audit_logger = logging.getLogger("audit")
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = True
-    if AUDIT_LOG_PATH:
-        audit_log_dir = os.path.dirname(AUDIT_LOG_PATH)
+    if audit_log_path:
+        audit_log_dir = os.path.dirname(audit_log_path)
         try:
             if audit_log_dir:
                 os.makedirs(audit_log_dir, exist_ok=True)
-            file_handler = logging.FileHandler(AUDIT_LOG_PATH)
+            file_handler = logging.FileHandler(audit_log_path)
             file_handler.setFormatter(formatter)
             audit_logger.addHandler(file_handler)
         except OSError as exc:
             root.warning(
                 "Failed to initialize audit file logging; continuing with stdout-only logging.",
-                extra={"extra": {"audit_log_path": AUDIT_LOG_PATH, "error": str(exc)}},
+                extra={"extra": {"audit_log_path": audit_log_path, "error": str(exc)}},
             )
 
 
-def start_metrics_server(host: str = METRICS_HOST, port: int = METRICS_PORT) -> None:
+def start_metrics_server(host: Optional[str] = None, port: Optional[int] = None) -> None:
     """
     Launch a Prometheus metrics HTTP server (CLI mode).
     FastAPI mode uses the /metrics endpoint instead.
     """
+    if host is None:
+        host = os.getenv("METRICS_HOST", "0.0.0.0")
+    if port is None:
+        port = int(os.getenv("METRICS_PORT", "9000"))
     # start_http_server is idempotent enough for single-process usage.
     start_http_server(port, addr=host)
 

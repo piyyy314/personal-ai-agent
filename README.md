@@ -66,7 +66,7 @@ Docker (optional)
 1. Build:
    docker build -t personal-ai-agent:latest .
 2. Run API (must set env vars in host or docker run):
-   docker run --env-file .env -p 8000:8000 -p 9000:9000 personal-ai-agent:latest
+   docker run --env-file .env -p 8000:8000 personal-ai-agent:latest
 
 Security, monitoring & privacy
 - Do not commit `.env` or secrets to source control.

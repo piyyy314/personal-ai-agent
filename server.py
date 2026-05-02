@@ -28,6 +28,7 @@ from prometheus_client import CONTENT_TYPE_LATEST
 load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
+AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 app = FastAPI(title="Personal AI Agent", version="1.0.0")
 agent = create_agent()
 
@@ -43,8 +44,13 @@ class ChatResponse(BaseModel):
 
 
 def require_api_key(request: Request) -> None:
-    if not API_AUTH_TOKEN:
+    if AUTH_DISABLED:
         return
+    if not API_AUTH_TOKEN:
+        raise HTTPException(
+            status_code=503,
+            detail="Server misconfiguration: API_AUTH_TOKEN is not configured. Set AUTH_DISABLED=true to explicitly disable authentication.",
+        )
     provided = request.headers.get("x-api-key")
     if provided != API_AUTH_TOKEN:
         record_security_event("unauthorized_request")

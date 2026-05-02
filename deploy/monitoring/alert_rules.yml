@@ -2,13 +2,13 @@ groups:
   - name: agent.rules
     rules:
       - alert: AgentUnavailable
-        expr: agent_session_status == 0
+        expr: up{job="agent"} == 0 or agent_session_status == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Agent session stopped"
-          description: "The agent process is not reporting healthy status."
+          summary: "Agent unavailable or unhealthy"
+          description: "The agent is down or reporting an unhealthy session status."
 
       - alert: HighErrorRate
         expr: (sum(rate(agent_requests_total{status="error"}[5m])) / sum(rate(agent_requests_total[5m]))) > 0.05
@@ -40,7 +40,7 @@ groups:
   - name: system.rules
     rules:
       - alert: AgentContainerHighCPU
-        expr: rate(container_cpu_usage_seconds_total{container="agent"}[5m]) > 0.8
+        expr: rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service="agent"}[5m]) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -49,7 +49,7 @@ groups:
           description: "Agent container CPU usage above 80% for 10 minutes."
 
       - alert: AgentContainerHighMemory
-        expr: container_memory_usage_bytes{container="agent"} > 1073741824
+        expr: container_memory_usage_bytes{container_label_com_docker_compose_service="agent"} > 1073741824
         for: 10m
         labels:
           severity: warning

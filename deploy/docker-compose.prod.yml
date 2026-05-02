@@ -7,10 +7,8 @@ services:
       - ../.env
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - METRICS_PORT=${METRICS_PORT:-9000}
     ports:
       - "8000:8000"
-      - "9000:9000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 30s
@@ -22,7 +20,7 @@ services:
       - monitoring
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.49.1
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
     volumes:
@@ -39,7 +37,7 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
-    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--config.expand-env"]
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     ports:
@@ -87,8 +85,8 @@ services:
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
-    ports:
-      - "8080:8080"
+    expose:
+      - "8080"
     privileged: true
     volumes:
       - /:/rootfs:ro

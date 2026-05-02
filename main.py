@@ -3,7 +3,6 @@
 CLI entrypoint for the personal AI agent with basic monitoring.
 Run: python main.py
 """
-import os
 from dotenv import load_dotenv
 
 from agent import create_agent
