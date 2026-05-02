@@ -38,7 +38,7 @@ services:
       - monitoring
 
   alertmanager:
-    image: prom/alertmanager:latest
+    image: prom/alertmanager:v0.27.0
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
     volumes:
       - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
