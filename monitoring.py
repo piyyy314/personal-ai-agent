@@ -81,9 +81,18 @@ def configure_logging() -> None:
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = True
     if AUDIT_LOG_PATH:
-        file_handler = logging.FileHandler(AUDIT_LOG_PATH)
-        file_handler.setFormatter(formatter)
-        audit_logger.addHandler(file_handler)
+        audit_log_dir = os.path.dirname(AUDIT_LOG_PATH)
+        try:
+            if audit_log_dir:
+                os.makedirs(audit_log_dir, exist_ok=True)
+            file_handler = logging.FileHandler(AUDIT_LOG_PATH)
+            file_handler.setFormatter(formatter)
+            audit_logger.addHandler(file_handler)
+        except OSError as exc:
+            root.warning(
+                "Failed to initialize audit file logging; continuing with stdout-only logging.",
+                extra={"extra": {"audit_log_path": AUDIT_LOG_PATH, "error": str(exc)}},
+            )
 
 
 def start_metrics_server(host: str = METRICS_HOST, port: int = METRICS_PORT) -> None:
