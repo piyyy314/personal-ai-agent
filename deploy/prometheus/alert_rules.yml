@@ -1,0 +1,93 @@
+groups:
+  - name: agent_alerts
+    interval: 30s
+    rules:
+      # Critical Alerts
+      - alert: AgentDown
+        expr: up{job="agent"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: agent
+        annotations:
+          summary: "AI Agent is down"
+          description: "The AI Agent has been down for more than 1 minute."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/agent-down"
+
+      - alert: HighErrorRate
+        expr: rate(agent_requests_failed[5m]) / rate(agent_requests_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: agent
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/high-error-rate"
+
+      - alert: ComplianceViolation
+        expr: increase(agent_compliance_violations[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: compliance
+        annotations:
+          summary: "Compliance violation detected"
+          description: "{{ $value }} compliance violations detected in the last 5 minutes."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/compliance-violation"
+
+      - alert: SecurityEvent
+        expr: increase(agent_security_events[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Security event detected"
+          description: "{{ $value }} security events detected in the last 5 minutes."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/security-event"
+
+      # Warning Alerts
+      - alert: HighResponseTime
+        expr: agent_response_time_seconds_sum / agent_response_time_seconds_count > 5
+        for: 10m
+        labels:
+          severity: warning
+          component: agent
+        annotations:
+          summary: "High response time"
+          description: "Average response time is {{ $value | humanizeDuration }} over the last 10 minutes."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/high-response-time"
+
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes{container="agent"} / container_spec_memory_limit_bytes{container="agent"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is at {{ $value | humanizePercentage }} of limit."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/high-memory"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{container="agent"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is at {{ $value | humanizePercentage }}."
+          runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/high-cpu"
+
+      # Info Alerts
+      - alert: NewDeployment
+        expr: changes(agent_uptime_seconds[1m]) > 0
+        for: 1m
+        labels:
+          severity: info
+          component: deployment
+        annotations:
+          summary: "New deployment detected"
+          description: "Agent has been restarted, uptime reset detected."

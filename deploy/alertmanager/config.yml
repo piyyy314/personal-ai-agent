@@ -1,0 +1,165 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Templates for alert messages
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Route tree for alert routing
+route:
+  group_by: ['alertname', 'severity', 'component']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+
+  # Child routes
+  routes:
+    # Critical alerts go to PagerDuty and Slack
+    - match:
+        severity: critical
+      receiver: 'critical-alerts'
+      continue: false
+
+    # Security events to security team
+    - match:
+        component: security
+      receiver: 'security-team'
+      continue: true
+
+    # Compliance violations to compliance team
+    - match:
+        component: compliance
+      receiver: 'compliance-team'
+      continue: true
+
+    # Warning alerts to Slack only
+    - match:
+        severity: warning
+      receiver: 'warning-alerts'
+
+    # Info alerts to log only
+    - match:
+        severity: info
+      receiver: 'info-alerts'
+
+# Receivers configuration
+receivers:
+  # Default receiver
+  - name: 'default'
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        from: '${ALERT_EMAIL_FROM}'
+        smarthost: '${SMTP_SMARTHOST}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: '[AI Agent] {{ .GroupLabels.alertname }}'
+
+  # Critical alerts
+  - name: 'critical-alerts'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        severity: '{{ .CommonLabels.severity }}'
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          description: '{{ .CommonAnnotations.description }}'
+          runbook: '{{ .CommonAnnotations.runbook }}'
+    slack_configs:
+      - channel: '#ai-agent-critical'
+        title: ':fire: {{ .CommonAnnotations.summary }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Severity:* {{ .Labels.severity }}
+          *Component:* {{ .Labels.component }}
+          *Runbook:* {{ .Annotations.runbook }}
+          {{ end }}
+        send_resolved: true
+    email_configs:
+      - to: '${CRITICAL_ALERT_EMAIL}'
+        from: '${ALERT_EMAIL_FROM}'
+        smarthost: '${SMTP_SMARTHOST}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: '[CRITICAL] AI Agent Alert: {{ .GroupLabels.alertname }}'
+
+  # Security team alerts
+  - name: 'security-team'
+    slack_configs:
+      - channel: '#security-alerts'
+        title: ':warning: Security Event Detected'
+        text: |
+          {{ range .Alerts }}
+          *Event:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          *Time:* {{ .StartsAt }}
+          *Runbook:* {{ .Annotations.runbook }}
+          {{ end }}
+        send_resolved: true
+    email_configs:
+      - to: '${SECURITY_TEAM_EMAIL}'
+        from: '${ALERT_EMAIL_FROM}'
+        smarthost: '${SMTP_SMARTHOST}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: '[SECURITY] AI Agent: {{ .GroupLabels.alertname }}'
+
+  # Compliance team alerts
+  - name: 'compliance-team'
+    slack_configs:
+      - channel: '#compliance-alerts'
+        title: ':rotating_light: Compliance Violation'
+        text: |
+          {{ range .Alerts }}
+          *Violation:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          *Time:* {{ .StartsAt }}
+          *Runbook:* {{ .Annotations.runbook }}
+          {{ end }}
+        send_resolved: true
+    email_configs:
+      - to: '${COMPLIANCE_TEAM_EMAIL}'
+        from: '${ALERT_EMAIL_FROM}'
+        smarthost: '${SMTP_SMARTHOST}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: '[COMPLIANCE] AI Agent: {{ .GroupLabels.alertname }}'
+
+  # Warning alerts
+  - name: 'warning-alerts'
+    slack_configs:
+      - channel: '#ai-agent-warnings'
+        title: ':warning: {{ .CommonAnnotations.summary }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Component:* {{ .Labels.component }}
+          {{ end }}
+        send_resolved: true
+
+  # Info alerts
+  - name: 'info-alerts'
+    slack_configs:
+      - channel: '#ai-agent-info'
+        title: ':information_source: {{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'
+        send_resolved: false
+
+# Inhibition rules
+inhibit_rules:
+  # Inhibit warning alerts if critical alert is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['component', 'alertname']
