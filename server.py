@@ -4,14 +4,18 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
+from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 from agent import create_agent
+from health_server import start_health_server
 from monitoring import (
     audit_event,
     configure_logging,
@@ -30,12 +34,26 @@ load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
-app = FastAPI(title="Personal AI Agent", version="1.0.0")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    start_health_server(port=health_port)
+    set_session_status(True)
+    audit_event("startup", {"mode": "api"})
+    await radar_startup_async()
+    yield
+    set_session_status(False)
+    audit_event("shutdown", {"mode": "api"})
+    await radar_shutdown()
+
+
+app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 agent = create_agent()
 
 # ── Static files & radar dashboard ────────────────────────────────
-from pathlib import Path
-from fastapi.staticfiles import StaticFiles
 _static_dir = Path(__file__).parent / "static"
 _static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
@@ -75,21 +93,6 @@ def require_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    configure_logging()
-    set_session_status(True)
-    audit_event("startup", {"mode": "api"})
-    await radar_startup_async()
-
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    set_session_status(False)
-    audit_event("shutdown", {"mode": "api"})
-    await radar_shutdown()
-
-
 @app.get("/healthz")
 async def healthcheck() -> dict:
     return {"status": "ok"}
@@ -112,7 +115,7 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = agent.run(request.prompt)
+        reply = agent.invoke({"input": request.prompt})["output"]
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
