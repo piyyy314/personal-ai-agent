@@ -3,9 +3,12 @@
 CLI entrypoint for the personal AI agent with basic monitoring.
 Run: python main.py
 """
+import os
+
 from dotenv import load_dotenv
 
 from agent import create_agent
+from health_server import start_health_server
 from monitoring import (
     audit_event,
     configure_logging,
@@ -13,7 +16,6 @@ from monitoring import (
     record_request_outcome,
     record_security_event,
     set_session_status,
-    start_metrics_server,
     timer,
 )
 
@@ -21,7 +23,8 @@ from monitoring import (
 def main():
     load_dotenv()
     configure_logging()
-    start_metrics_server()
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    start_health_server(port=health_port)
     set_session_status(True)
     audit_event("startup", {"mode": "cli"})
 
@@ -43,7 +46,7 @@ def main():
 
             start_time = timer()
             try:
-                response = agent.run(query)
+                response = agent.invoke({"input": query})["output"]
                 duration = timer() - start_time
                 record_request_outcome("success", duration, source="cli")
                 audit_event(

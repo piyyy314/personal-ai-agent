@@ -10,11 +10,11 @@ load_dotenv()
 
 try:
     # LangChain imports
-    from langchain.llms import OpenAI
+    from langchain_openai import OpenAI
     from langchain.memory import ConversationBufferMemory
     from langchain.agents import initialize_agent, Tool, AgentType
-    from langchain.chains.llm_math import LLMMathChain
-    from langchain.utilities import SerpAPIWrapper
+    from langchain.chains import LLMMathChain
+    from langchain_community.utilities import SerpAPIWrapper
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
 
@@ -45,7 +45,7 @@ def create_agent():
         )
 
     # Math tool (uses the LLM's math chain)
-    llm_math = LLMMathChain(llm=llm)
+    llm_math = LLMMathChain.from_llm(llm=llm)
     tools.append(
         Tool(
             name="Calculator",

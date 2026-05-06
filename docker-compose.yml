@@ -13,6 +13,7 @@ services:
       - HEALTH_PORT=8080
       - LOG_LEVEL=INFO
     ports:
+      - "8000:8000"
       - "8080:8080"
     volumes:
       - agent-logs:/var/log/agent
@@ -53,7 +54,7 @@ services:
     container_name: grafana
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:

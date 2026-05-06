@@ -104,8 +104,18 @@ def start_metrics_server(host: Optional[str] = None, port: Optional[int] = None)
     start_http_server(port, addr=host)
 
 
+_session_running: bool = False
+
+
 def set_session_status(running: bool) -> None:
+    global _session_running
+    _session_running = running
     SESSION_HEALTH.set(1 if running else 0)
+
+
+def is_session_running() -> bool:
+    """Return True when the agent session is active."""
+    return _session_running
 
 
 def record_request_outcome(status: str, duration_seconds: float, source: str) -> None:
