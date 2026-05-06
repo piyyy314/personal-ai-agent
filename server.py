@@ -4,6 +4,7 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 from agent import create_agent
+from health_server import start_health_server
 from monitoring import (
     audit_event,
     configure_logging,
@@ -29,7 +31,21 @@ load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
-app = FastAPI(title="Personal AI Agent", version="1.0.0")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_logging()
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    start_health_server(port=health_port)
+    set_session_status(True)
+    audit_event("startup", {"mode": "api"})
+    yield
+    set_session_status(False)
+    audit_event("shutdown", {"mode": "api"})
+
+
+app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 agent = create_agent()
 
 
@@ -64,19 +80,6 @@ def require_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-@app.on_event("startup")
-async def startup_event() -> None:
-    configure_logging()
-    set_session_status(True)
-    audit_event("startup", {"mode": "api"})
-
-
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    set_session_status(False)
-    audit_event("shutdown", {"mode": "api"})
-
-
 @app.get("/healthz")
 async def healthcheck() -> dict:
     return {"status": "ok"}
@@ -99,7 +102,7 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = agent.run(request.prompt)
+        reply = agent.invoke({"input": request.prompt})["output"]
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -131,3 +134,4 @@ async def chat(
             },
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
+
