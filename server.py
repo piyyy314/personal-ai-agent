@@ -23,6 +23,7 @@ from monitoring import (
     timer,
 )
 from prometheus_client import CONTENT_TYPE_LATEST
+from radar_api import router as radar_router, radar_startup_async, radar_shutdown
 
 
 load_dotenv()
@@ -31,6 +32,16 @@ API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 app = FastAPI(title="Personal AI Agent", version="1.0.0")
 agent = create_agent()
+
+# ── Static files & radar dashboard ────────────────────────────────
+from pathlib import Path
+from fastapi.staticfiles import StaticFiles
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# ── Radar API router ───────────────────────────────────────────────
+app.include_router(radar_router)
 
 
 class ChatRequest(BaseModel):
@@ -69,12 +80,14 @@ async def startup_event() -> None:
     configure_logging()
     set_session_status(True)
     audit_event("startup", {"mode": "api"})
+    await radar_startup_async()
 
 
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
     set_session_status(False)
     audit_event("shutdown", {"mode": "api"})
+    await radar_shutdown()
 
 
 @app.get("/healthz")
