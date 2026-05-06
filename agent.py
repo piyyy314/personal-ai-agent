@@ -9,14 +9,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 try:
-    # LangChain imports
-    from langchain.llms import OpenAI
+    # LangChain imports - updated for v0.1.0+
+    from langchain_openai import OpenAI
     from langchain.memory import ConversationBufferMemory
     from langchain.agents import initialize_agent, Tool, AgentType
-    from langchain.chains.llm_math import LLMMathChain
-    from langchain.utilities import SerpAPIWrapper
-except Exception as e:
-    raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
+    from langchain.chains import LLMMathChain
+    from langchain_community.utilities import SerpAPIWrapper
+except ImportError:
+    # Fallback to older import paths for compatibility
+    try:
+        from langchain.llms import OpenAI
+        from langchain.memory import ConversationBufferMemory
+        from langchain.agents import initialize_agent, Tool, AgentType
+        from langchain.chains.llm_math import LLMMathChain
+        from langchain.utilities import SerpAPIWrapper
+    except Exception as e:
+        raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
 
 def create_agent():
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -35,24 +43,39 @@ def create_agent():
     # Web search via SerpAPI (optional)
     serp_key = os.getenv("SERPAPI_API_KEY")
     if serp_key:
-        serp = SerpAPIWrapper()
-        tools.append(
-            Tool(
-                name="Search",
-                func=serp.run,
-                description="Useful for when you need to look up current web results."
+        try:
+            serp = SerpAPIWrapper()
+            tools.append(
+                Tool(
+                    name="Search",
+                    func=serp.run,
+                    description="Useful for when you need to look up current web results."
+                )
             )
-        )
+        except Exception:
+            # SerpAPI may not be available
+            pass
 
     # Math tool (uses the LLM's math chain)
-    llm_math = LLMMathChain(llm=llm)
-    tools.append(
-        Tool(
-            name="Calculator",
-            func=llm_math.run,
-            description="Performs multi-step math calculations."
+    try:
+        llm_math = LLMMathChain(llm=llm)
+        tools.append(
+            Tool(
+                name="Calculator",
+                func=llm_math.run,
+                description="Performs multi-step math calculations."
+            )
         )
-    )
+    except Exception:
+        # LLMMathChain may have different signature in newer versions
+        llm_math = LLMMathChain.from_llm(llm=llm)
+        tools.append(
+            Tool(
+                name="Calculator",
+                func=llm_math.run,
+                description="Performs multi-step math calculations."
+            )
+        )
 
     agent = initialize_agent(
         tools,

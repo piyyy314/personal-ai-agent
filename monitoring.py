@@ -41,6 +41,23 @@ SESSION_HEALTH = Gauge(
     "1 when the agent loop/API is running; 0 when stopped.",
 )
 
+# Additional metrics for alert rules
+UPTIME_GAUGE = Gauge(
+    "agent_uptime_seconds",
+    "Seconds since the agent was started.",
+)
+ACTIVE_SESSIONS = Gauge(
+    "agent_active_sessions",
+    "Number of active agent sessions.",
+)
+COMPLIANCE_VIOLATIONS = Counter(
+    "agent_compliance_violations_total",
+    "Total compliance violations detected.",
+)
+
+# Track start time for uptime calculation
+_start_time = time.time()
+
 
 class JsonFormatter(logging.Formatter):
     """Minimal JSON log formatter for structured logs."""
@@ -105,16 +122,34 @@ def start_metrics_server(host: Optional[str] = None, port: Optional[int] = None)
 
 
 def set_session_status(running: bool) -> None:
+    """Set the session status and update uptime"""
     SESSION_HEALTH.set(1 if running else 0)
+    if running:
+        ACTIVE_SESSIONS.inc()
+        update_uptime()
+    else:
+        ACTIVE_SESSIONS.dec()
+
+
+def update_uptime() -> None:
+    """Update the uptime gauge"""
+    uptime = time.time() - _start_time
+    UPTIME_GAUGE.set(uptime)
 
 
 def record_request_outcome(status: str, duration_seconds: float, source: str) -> None:
     REQUEST_COUNTER.labels(status=status, source=source).inc()
     REQUEST_LATENCY.labels(source=source).observe(duration_seconds)
+    update_uptime()
 
 
 def record_security_event(event_type: str) -> None:
     SECURITY_EVENTS.labels(event_type=event_type).inc()
+
+
+def record_compliance_violation() -> None:
+    """Record a compliance violation"""
+    COMPLIANCE_VIOLATIONS.inc()
 
 
 SUSPICIOUS_PATTERNS = {

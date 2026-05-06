@@ -53,9 +53,11 @@ if curl -sf "${METRICS_ENDPOINT}" > /dev/null 2>&1; then
     METRICS=$(curl -s "${METRICS_ENDPOINT}")
 
     UPTIME=$(echo "$METRICS" | grep "^agent_uptime_seconds" | awk '{print $2}' || echo "0")
-    REQUESTS_TOTAL=$(echo "$METRICS" | grep "^agent_requests_total" | awk '{print $2}' || echo "0")
-    REQUESTS_FAILED=$(echo "$METRICS" | grep "^agent_requests_failed" | awk '{print $2}' || echo "0")
     ACTIVE_SESSIONS=$(echo "$METRICS" | grep "^agent_active_sessions" | awk '{print $2}' || echo "0")
+
+    # Calculate total and failed requests from agent_requests_total metric with status label
+    REQUESTS_TOTAL=$(echo "$METRICS" | grep 'agent_requests_total{' | awk '{sum += $2} END {print sum+0}')
+    REQUESTS_FAILED=$(echo "$METRICS" | grep 'agent_requests_total{.*status="error"' | awk '{print $2}' || echo "0")
 
     echo "  Uptime: ${UPTIME}s"
     echo "  Total Requests: ${REQUESTS_TOTAL}"
@@ -63,7 +65,7 @@ if curl -sf "${METRICS_ENDPOINT}" > /dev/null 2>&1; then
     echo "  Active Sessions: ${ACTIVE_SESSIONS}"
 
     # Calculate error rate
-    if [ "$REQUESTS_TOTAL" != "0" ]; then
+    if [ "$REQUESTS_TOTAL" != "0" ] && [ "$REQUESTS_TOTAL" != "" ]; then
         ERROR_RATE=$(echo "scale=2; $REQUESTS_FAILED * 100 / $REQUESTS_TOTAL" | bc)
         echo "  Error Rate: ${ERROR_RATE}%"
 

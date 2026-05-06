@@ -22,7 +22,8 @@ This project contains a production-ready personal AI agent using LangChain, feat
 
 ### Option 1: FastAPI service (production-ready, monitored)
 - Requires OpenAI key (or swap LLM implementation).
-- Exposes `/v1/chat`, `/healthz`, and `/metrics` for Prometheus.
+- Exposes `/v1/chat` (API), `/health` and `/ready` (health probes), and `/metrics` for Prometheus.
+- API runs on port 8000, health checks on port 8080
 - Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
 
 ### Option 2: Cloud-Based CLI (OpenAI)
@@ -104,8 +105,9 @@ Or run in CLI mode:
 
 3. Access monitoring:
    - Agent API: http://localhost:8000
-   - Agent Metrics: http://localhost:8000/metrics
-   - Agent Health: http://localhost:8000/healthz
+   - Agent Health: http://localhost:8080/health
+   - Agent Readiness: http://localhost:8080/ready
+   - Agent Metrics: http://localhost:8080/metrics
    - Grafana: http://localhost:3000 (admin/admin)
    - Prometheus: http://localhost:9090
    - AlertManager: http://localhost:9093
@@ -126,7 +128,7 @@ kubectl apply -f deploy/kubernetes/deployment.yml
    ```
 2. Run API (must set env vars in host or docker run):
    ```bash
-   docker run --env-file .env -p 8000:8000 personal-ai-agent:latest
+   docker run --env-file .env -p 8000:8000 -p 8080:8080 personal-ai-agent:latest
    ```
 
 ## Monitoring Endpoints

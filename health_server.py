@@ -5,8 +5,12 @@ Runs on port 8080 to provide /health, /ready, and /metrics endpoints.
 """
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+import logging
 import threading
-from monitoring import health, metrics, logger
+from monitoring import metrics_response, SESSION_HEALTH
+
+
+logger = logging.getLogger(__name__)
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -14,11 +18,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         """Override to use structured logging"""
-        logger.log_event(
-            event_type="http_request",
-            message=f"{self.address_string()} - {format % args}",
-            level="debug"
-        )
+        logger.debug(f"{self.address_string()} - {format % args}")
 
     def do_GET(self):
         """Handle GET requests"""
@@ -35,18 +35,31 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_health(self):
         """Liveness probe endpoint"""
-        health_status = health.check_health()
-        status_code = 200 if health_status["status"] == "healthy" else 503
+        # Simple health check - service is alive if this responds
+        health_status = {
+            "status": "healthy",
+            "service": "personal-ai-agent"
+        }
 
-        self.send_response(status_code)
+        self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(health_status, indent=2).encode())
 
     def handle_ready(self):
         """Readiness probe endpoint"""
-        ready_status = health.check_readiness()
-        status_code = 200 if ready_status["status"] == "ready" else 503
+        # Check if session is ready via SESSION_HEALTH gauge
+        try:
+            session_value = SESSION_HEALTH._value.get()
+            is_ready = session_value > 0
+        except Exception:
+            is_ready = False
+
+        ready_status = {
+            "status": "ready" if is_ready else "not_ready",
+            "service": "personal-ai-agent"
+        }
+        status_code = 200 if is_ready else 503
 
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
@@ -55,12 +68,12 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_metrics(self):
         """Prometheus metrics endpoint"""
-        metrics_data = metrics.get_prometheus_format()
+        metrics_data = metrics_response()
 
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; version=0.0.4")
         self.end_headers()
-        self.wfile.write(metrics_data.encode())
+        self.wfile.write(metrics_data)
 
     def handle_root(self):
         """Root endpoint with available endpoints"""
@@ -84,12 +97,7 @@ def start_health_server(port: int = 8080):
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.log_event(
-        event_type="health_server_started",
-        message=f"Health check server started on port {port}",
-        level="info",
-        port=port
-    )
+    logger.info(f"Health check server started on port {port}")
     return server
 
 

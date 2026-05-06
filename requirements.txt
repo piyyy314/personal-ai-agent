@@ -1,5 +1,7 @@
-langchain>=0.0.320
-openai>=0.27.0
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20
+openai>=1.0.0
 python-dotenv>=1.0.0
 serpapi>=2.0.0
 gradio>=3.0.0

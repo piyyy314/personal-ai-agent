@@ -23,6 +23,7 @@ from monitoring import (
     timer,
 )
 from prometheus_client import CONTENT_TYPE_LATEST
+from health_server import start_health_server
 
 
 load_dotenv()
@@ -69,6 +70,9 @@ async def startup_event() -> None:
     configure_logging()
     set_session_status(True)
     audit_event("startup", {"mode": "api"})
+    # Start health check server on port 8080
+    health_port = int(os.getenv("HEALTH_PORT", "8080"))
+    start_health_server(port=health_port)
 
 
 @app.on_event("shutdown")
@@ -80,6 +84,18 @@ async def shutdown_event() -> None:
 @app.get("/healthz")
 async def healthcheck() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/health")
+async def health() -> dict:
+    """Liveness probe endpoint"""
+    return {"status": "healthy", "service": "personal-ai-agent"}
+
+
+@app.get("/ready")
+async def ready() -> dict:
+    """Readiness probe endpoint"""
+    return {"status": "ready", "service": "personal-ai-agent"}
 
 
 @app.get("/metrics")
