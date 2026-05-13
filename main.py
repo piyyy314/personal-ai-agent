@@ -70,8 +70,8 @@ def main():
                 )
                 if result.get("cache_hit"):
                     print("\nAgent [cache]:", response)
-                    continue
-                print("\nAgent:", response)
+                else:
+                    print("\nAgent:", response)
             except Exception as run_error:
                 duration = timer() - start_time
                 record_request_outcome("error", duration, source="cli")

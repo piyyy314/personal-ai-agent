@@ -1,6 +1,12 @@
 import unittest
+from unittest.mock import patch
 
-from performance import PerformanceTunedAgent, PrivacyAwareResponseCache
+from performance import (
+    PerformanceTunedAgent,
+    PrivacyAwareResponseCache,
+    get_validated_env_int,
+    normalize_prompt,
+)
 
 
 class FakeClock:
@@ -27,6 +33,9 @@ class BrokenAgent:
 
 
 class PerformanceTests(unittest.TestCase):
+    def test_normalize_prompt_collapses_extra_whitespace(self):
+        self.assertEqual("sensitive prompt", normalize_prompt(" sensitive   prompt "))
+
     def test_cache_uses_hashed_privacy_preserving_keys(self):
         clock = FakeClock()
         cache = PrivacyAwareResponseCache(max_entries=2, ttl_seconds=60, clock=clock)
@@ -61,6 +70,11 @@ class PerformanceTests(unittest.TestCase):
             PrivacyAwareResponseCache(max_entries=-1)
         with self.assertRaises(ValueError):
             PrivacyAwareResponseCache(ttl_seconds=-1)
+
+    def test_invalid_memory_window_env_raises_value_error(self):
+        with patch.dict("os.environ", {"AGENT_MEMORY_WINDOW": "-1"}, clear=False):
+            with self.assertRaises(ValueError):
+                get_validated_env_int("AGENT_MEMORY_WINDOW", 6, minimum=1)
 
     def test_invalid_agent_output_raises_type_error(self):
         wrapper = PerformanceTunedAgent(primary_agent=BrokenAgent())

@@ -5,6 +5,7 @@ Performance helpers for privacy-aware caching and low-footprint query execution.
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from collections import OrderedDict
 from threading import RLock
@@ -19,6 +20,13 @@ AgentFactory = Callable[[], Any]
 
 def normalize_prompt(prompt: str) -> str:
     return " ".join(prompt.split())
+
+
+def get_validated_env_int(name: str, default: int, minimum: int = 0) -> int:
+    value = int(os.getenv(name, str(default)))
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}")
+    return value
 
 
 class PrivacyAwareResponseCache:
@@ -128,18 +136,25 @@ class PerformanceTunedAgent:
         if isinstance(result, dict):
             output = result.get("output")
             if not isinstance(output, str):
-                raise TypeError("Agent responses must include a string 'output' value.")
+                raise TypeError(
+                    "Agent responses must include a string 'output' value, "
+                    f"got {type(output).__name__}."
+                )
             return dict(result)
         if isinstance(result, str):
             return {"output": result}
         raise TypeError("Agent responses must be a string or a dict containing 'output'.")
 
     def invoke(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        request = dict(payload)
-        prompt = str(request.get("input", ""))
-        stealth = bool(request.pop("stealth", False))
-        use_cache = bool(request.pop("use_cache", True))
+        prompt = str(payload.get("input", ""))
+        stealth = bool(payload.get("stealth", False))
+        use_cache = bool(payload.get("use_cache", True))
         mode = "stealth" if stealth else "standard"
+        request = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"stealth", "use_cache"}
+        }
 
         if stealth and self._on_stealth_request:
             self._on_stealth_request()

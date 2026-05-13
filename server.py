@@ -120,6 +120,8 @@ async def chat(
             }
         )
         reply = result["output"]
+        cache_hit = result.get("cache_hit", False)
+        stealth_mode = result.get("stealth", False)
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -129,7 +131,7 @@ async def chat(
                 "status": "success",
                 "source": "api",
                 "stealth": request.stealth,
-                "cache_hit": result.get("cache_hit", False),
+                "cache_hit": cache_hit,
             },
         )
         return JSONResponse(
@@ -137,8 +139,8 @@ async def chat(
                 "response": reply,
                 "latency_ms": round(duration * 1000, 2),
                 "suspicious": suspicious,
-                "cache_hit": result.get("cache_hit", False),
-                "stealth": result.get("stealth", False),
+                "cache_hit": cache_hit,
+                "stealth": stealth_mode,
             }
         )
     except Exception as run_error:

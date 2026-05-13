@@ -7,7 +7,11 @@ import os
 from dotenv import load_dotenv
 
 from monitoring import record_cache_event, record_stealth_request, set_cache_entries
-from performance import PerformanceTunedAgent, PrivacyAwareResponseCache
+from performance import (
+    PerformanceTunedAgent,
+    PrivacyAwareResponseCache,
+    get_validated_env_int,
+)
 
 load_dotenv()
 
@@ -22,13 +26,6 @@ except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
 
 DEFAULT_MEMORY_WINDOW = 6
-
-
-def _memory_window_size() -> int:
-    size = int(os.getenv("AGENT_MEMORY_WINDOW", str(DEFAULT_MEMORY_WINDOW)))
-    if size < 1:
-        raise ValueError("AGENT_MEMORY_WINDOW must be >= 1")
-    return size
 
 
 def _build_tools(llm):
@@ -62,7 +59,7 @@ def _build_agent_executor(memory_enabled: bool):
     memory = None
     if memory_enabled:
         memory = ConversationBufferWindowMemory(
-            k=_memory_window_size(),
+            k=get_validated_env_int("AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW, minimum=1),
             memory_key="chat_history",
             return_messages=True,
         )
@@ -82,8 +79,8 @@ def create_agent():
         raise RuntimeError("OPENAI_API_KEY not set in environment (see .env.example)")
 
     response_cache = PrivacyAwareResponseCache(
-        max_entries=int(os.getenv("AGENT_CACHE_MAX_ENTRIES", "128")),
-        ttl_seconds=int(os.getenv("AGENT_CACHE_TTL_SECONDS", "300")),
+        max_entries=get_validated_env_int("AGENT_CACHE_MAX_ENTRIES", 128),
+        ttl_seconds=get_validated_env_int("AGENT_CACHE_TTL_SECONDS", 300),
         on_event=record_cache_event,
         on_size_change=set_cache_entries,
     )
