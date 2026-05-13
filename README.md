@@ -15,7 +15,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - **Multi-Channel Alerting**: Slack, PagerDuty, email notifications
 - **Compliance**: Audit logging, GDPR/SOC2 alignment, data retention policies
 - **Security**: Container hardening, encryption, access controls
-- **Historical Flight Replay**: File-backed aircraft movement history with indexed replay/timeline analysis
+- **Historical Flight Replay**: Encrypted-at-rest aircraft movement history with indexed replay/timeline analysis
 - **High Availability**: Kubernetes deployment, health checks, auto-restart
 - **Incident Response**: Forensic tools, emergency procedures, runbooks
 

@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from math import atan2, cos, radians, sin, sqrt
 from typing import Any, Dict, List, Optional
 
+from cryptography.fernet import Fernet, InvalidToken
+
 
 EMERGENCY_SQUAWKS = {
     "7500": "hijacking",
@@ -113,6 +115,7 @@ class FlightHistoryStore:
         self._lock = threading.RLock()
         self._timeline: List[FlightObservation] = []
         self._aircraft_index: Dict[str, List[FlightObservation]] = {}
+        self._cipher = self._build_cipher()
         self._load()
 
     def _load(self) -> None:
@@ -123,7 +126,48 @@ class FlightHistoryStore:
                 entry = line.strip()
                 if not entry:
                     continue
-                self._insert(FlightObservation.from_dict(json.loads(entry)))
+                self._insert(self._decode_observation(entry))
+
+    def _build_cipher(self) -> Fernet:
+        configured_key = os.getenv("FLIGHT_HISTORY_ENCRYPTION_KEY")
+        if configured_key:
+            return Fernet(configured_key.encode("utf-8"))
+
+        default_key_path = os.path.join(
+            os.path.dirname(self.storage_path) or os.getcwd(),
+            "flight_history.key",
+        )
+        key_path = os.getenv("FLIGHT_HISTORY_KEY_PATH", default_key_path)
+        return Fernet(self._load_or_create_key(key_path))
+
+    def _load_or_create_key(self, key_path: str) -> bytes:
+        directory = os.path.dirname(key_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        if os.path.exists(key_path):
+            with open(key_path, "rb") as key_file:
+                return key_file.read().strip()
+
+        key = Fernet.generate_key()
+        with open(key_path, "wb") as key_file:
+            key_file.write(key)
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
+        return key
+
+    def _encode_observation(self, observation: FlightObservation) -> str:
+        payload = json.dumps(observation.to_dict(), sort_keys=True).encode("utf-8")
+        return self._cipher.encrypt(payload).decode("utf-8")
+
+    def _decode_observation(self, value: str) -> FlightObservation:
+        try:
+            payload = self._cipher.decrypt(value.encode("utf-8"))
+            decoded = payload.decode("utf-8")
+        except InvalidToken:
+            decoded = value
+        return FlightObservation.from_dict(json.loads(decoded))
 
     def _insert(self, observation: FlightObservation) -> None:
         aircraft_track = self._aircraft_index.setdefault(observation.aircraft_id, [])
@@ -138,7 +182,7 @@ class FlightHistoryStore:
         self._timeline.insert(timeline_position, observation)
 
     def record(self, observation: FlightObservation) -> Dict[str, Any]:
-        serialized = json.dumps(observation.to_dict(), sort_keys=True)
+        serialized = self._encode_observation(observation)
         with self._lock:
             directory = os.path.dirname(self.storage_path)
             if directory:

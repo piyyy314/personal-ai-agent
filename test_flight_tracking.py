@@ -97,6 +97,9 @@ class FlightHistoryStoreTest(unittest.TestCase):
 
     def test_store_reloads_persisted_history(self) -> None:
         self.store.record(self.observation("FALCON9", 0, 34.0, -118.4, altitude_ft=5000))
+        with open(self.storage_path, "r", encoding="utf-8") as history_file:
+            contents = history_file.read()
+        self.assertNotIn("FALCON9", contents)
 
         reloaded = FlightHistoryStore(storage_path=self.storage_path)
         replay = reloaded.replay("FALCON9")
