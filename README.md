@@ -155,7 +155,7 @@ Run the health check script:
 
 ## Security Operations Scenarios
 
-These workflows are designed for authorized defensive operations. Think "Palantir-style visibility" rather than covert action: high-fidelity telemetry, quiet observation, and strict data handling.
+These workflows are designed for authorized defensive operations. Think comprehensive observability with minimal operational impact rather than covert action: high-fidelity telemetry, quiet observation, and strict data handling.
 
 ### 1. Threat triage with minimal operator friction
 

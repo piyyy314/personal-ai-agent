@@ -49,7 +49,6 @@ class JsonFormatter(logging.Formatter):
         timestamp = self.formatTime(record, "%Y-%m-%dT%H:%M:%SZ")
         payload: Dict[str, object] = {
             "timestamp": timestamp,
-            "ts": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -148,7 +147,7 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
     metadata = dict(details or {})
-    outcome = str(metadata.pop("outcome", metadata.pop("status", "success")))
+    outcome = metadata.pop("outcome", None) or metadata.pop("status", None) or "success"
     logging.getLogger("audit").info(
         event,
         extra={
@@ -156,7 +155,7 @@ def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None
                 "event_type": str(metadata.pop("event_type", "audit")),
                 "action": str(metadata.pop("action", event)),
                 "resource": str(metadata.pop("resource", "agent")),
-                "outcome": outcome,
+                "outcome": str(outcome),
                 "session_id": str(
                     metadata.pop("session_id", os.getenv("AUDIT_SESSION_ID", "system"))
                 ),
