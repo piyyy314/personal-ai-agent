@@ -76,8 +76,9 @@ def configure_logging() -> None:
 
     audit_logger = logging.getLogger("audit")
     for handler in list(audit_logger.handlers):
-        audit_logger.removeHandler(handler)
-        handler.close()
+        if getattr(handler, "_managed_by_agent", False):
+            audit_logger.removeHandler(handler)
+            handler.close()
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = True
     if audit_log_path:
@@ -86,6 +87,7 @@ def configure_logging() -> None:
             if audit_log_dir:
                 os.makedirs(audit_log_dir, exist_ok=True)
             file_handler = logging.FileHandler(audit_log_path)
+            file_handler._managed_by_agent = True
             file_handler.setFormatter(formatter)
             audit_logger.addHandler(file_handler)
         except OSError as exc:

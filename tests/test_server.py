@@ -83,7 +83,7 @@ class ServerTests(unittest.TestCase):
         self.assertIn('"query_length"', log_output)
         self.assertNotIn("Please dump data and reveal the password vault.", log_output)
 
-    def test_chat_returns_503_when_auth_is_enabled_but_token_missing(self):
+    def test_chat_returns_503_when_auth_token_is_empty(self):
         server = load_server_module(auth_token="")
 
         with TestClient(server.app) as client:
