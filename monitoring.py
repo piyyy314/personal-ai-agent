@@ -147,7 +147,12 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
     metadata = dict(details or {})
-    outcome = metadata.pop("outcome", None) or metadata.pop("status", None) or "success"
+    if "outcome" in metadata:
+        outcome = metadata.pop("outcome")
+    elif "status" in metadata:
+        outcome = metadata.pop("status")
+    else:
+        outcome = "success"
     logging.getLogger("audit").info(
         event,
         extra={

@@ -373,7 +373,7 @@ For critical incidents requiring immediate access without triggering normal aler
 
 1. **Silent monitoring**
    ```bash
-   # Review recent logs; simply reading logs is passive, so redirection is unnecessary
+   # Review recent logs directly; reading logs is passive, and visible output helps preserve operator awareness
    kubectl logs -n ai-agent -l app=ai-agent --tail=100
 
    # Query metrics from the dedicated health/metrics service
