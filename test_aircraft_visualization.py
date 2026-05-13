@@ -11,6 +11,7 @@ from aircraft_visualization import (
 class AircraftVisualizationTests(unittest.TestCase):
     def test_heading_is_normalized_into_compass_range(self):
         self.assertEqual(normalize_heading(725), 5)
+        self.assertEqual(normalize_heading(360), 0)
         self.assertEqual(normalize_heading(-90), 270)
 
     def test_analysis_reports_advanced_and_security_views(self):

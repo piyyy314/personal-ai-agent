@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from html import escape
 from typing import Dict, List
 
+MAX_ALTITUDE_FT = 45_000
+MAX_SPEED_KTS = 900
+
 
 @dataclass(frozen=True)
 class AircraftSnapshot:
@@ -114,8 +117,8 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
 
 def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
     analysis = build_aircraft_analysis(snapshot)
-    altitude_ratio = min(max(snapshot.altitude_ft, 0), 45_000) / 45_000
-    speed_ratio = min(max(snapshot.speed_kts, 0), 900) / 900
+    altitude_ratio = min(max(snapshot.altitude_ft, 0), MAX_ALTITUDE_FT) / MAX_ALTITUDE_FT
+    speed_ratio = min(max(snapshot.speed_kts, 0), MAX_SPEED_KTS) / MAX_SPEED_KTS
     stealth_text = "ENABLED" if snapshot.stealth_enabled else "DISABLED"
     stealth_class = "on" if snapshot.stealth_enabled else "off"
     security_flags = analysis["security"]["flags"] or ["No immediate security advisories."]
