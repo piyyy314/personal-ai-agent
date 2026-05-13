@@ -110,7 +110,7 @@ async def chat(
             "response",
             {
                 "latency_ms": round(duration * 1000, 2),
-                "status": "success",
+                "outcome": "success",
                 "source": "api",
                 "response_length": len(reply),
             },
@@ -130,7 +130,7 @@ async def chat(
             "response",
             {
                 "latency_ms": round(duration * 1000, 2),
-                "status": "error",
+                "outcome": "error",
                 "source": "api",
                 "error": str(run_error),
             },

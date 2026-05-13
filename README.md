@@ -161,7 +161,7 @@ These workflows are designed for authorized defensive operations. Think comprehe
 
 - Protect `/v1/chat` with `API_AUTH_TOKEN` so every analyst request is authenticated
 - Use the suspicious-query detector to flag credential probes, exfiltration language, and privilege-escalation attempts
-- Review `/metrics`, `/healthz`, and the health probe service (`/health`, `/ready`, `/metrics` on port `8080`) for live operational status
+- Review the API health endpoint (`/healthz` on port `8000`) alongside the health probe service (`/health`, `/ready`, `/metrics` on port `8080`) for live operational status
 
 ### 2. Quiet investigation during incident response
 

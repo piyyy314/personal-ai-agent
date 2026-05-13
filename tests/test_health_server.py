@@ -4,7 +4,7 @@ import urllib.error
 import urllib.request
 
 from health_server import start_health_server
-from monitoring import set_session_status
+from monitoring import is_session_running, set_session_status
 
 
 class HealthServerTests(unittest.TestCase):
@@ -12,6 +12,7 @@ class HealthServerTests(unittest.TestCase):
         server = start_health_server(port=0)
         port = server.server_address[1]
         base_url = f"http://127.0.0.1:{port}"
+        original_status = is_session_running()
 
         try:
             set_session_status(False)
@@ -38,7 +39,6 @@ class HealthServerTests(unittest.TestCase):
                 metrics_payload = response.read().decode()
                 self.assertIn("agent_session_status", metrics_payload)
         finally:
-            set_session_status(False)
+            set_session_status(original_status)
             server.shutdown()
             server.server_close()
-

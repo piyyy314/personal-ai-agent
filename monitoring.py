@@ -147,6 +147,7 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
     metadata = dict(details or {})
+    # Prefer "outcome" for new callers; "status" remains supported for existing ones.
     if "outcome" in metadata:
         outcome = metadata.pop("outcome")
     elif "status" in metadata:

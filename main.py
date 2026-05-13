@@ -54,7 +54,7 @@ def main():
                     "response",
                     {
                         "latency_ms": round(duration * 1000, 2),
-                        "status": "success",
+                        "outcome": "success",
                         "response_length": len(response),
                         "source": "cli",
                     },
@@ -68,7 +68,7 @@ def main():
                     "response",
                     {
                         "latency_ms": round(duration * 1000, 2),
-                        "status": "error",
+                        "outcome": "error",
                         "error": str(run_error),
                     },
                 )
