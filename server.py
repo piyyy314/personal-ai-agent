@@ -5,7 +5,7 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
 from contextlib import asynccontextmanager
-from threading import Lock
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -52,8 +52,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
-agent = None
-agent_lock = Lock()
 
 
 class ChatRequest(BaseModel):
@@ -75,13 +73,9 @@ class AircraftAnalysisRequest(BaseModel):
     )
 
 
+@lru_cache(maxsize=1)
 def get_agent():
-    global agent
-    if agent is None:
-        with agent_lock:
-            if agent is None:
-                agent = create_agent()
-    return agent
+    return create_agent()
 
 
 def require_api_key(request: Request) -> None:

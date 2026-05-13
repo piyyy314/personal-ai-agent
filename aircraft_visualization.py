@@ -115,10 +115,15 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
     }
 
 
+def clamped_ratio(value: float, maximum: float) -> float:
+    return min(max(value, 0), maximum) / maximum
+
+
 def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
     analysis = build_aircraft_analysis(snapshot)
-    altitude_ratio = min(max(snapshot.altitude_ft, 0), MAX_ALTITUDE_FT) / MAX_ALTITUDE_FT
-    speed_ratio = min(max(snapshot.speed_kts, 0), MAX_SPEED_KTS) / MAX_SPEED_KTS
+    altitude_ratio = clamped_ratio(snapshot.altitude_ft, MAX_ALTITUDE_FT)
+    speed_ratio = clamped_ratio(snapshot.speed_kts, MAX_SPEED_KTS)
+    heading_deg = f'{analysis["basic"]["heading_deg"]:.1f}'
     stealth_text = "ENABLED" if snapshot.stealth_enabled else "DISABLED"
     stealth_class = "on" if snapshot.stealth_enabled else "off"
     security_flags = analysis["security"]["flags"] or ["No immediate security advisories."]
@@ -273,7 +278,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
       background: linear-gradient(180deg, var(--danger), white);
       border-radius: 999px;
       transform-origin: center 48px;
-      transform: rotate({analysis["basic"]["heading_deg"]}deg);
+      transform: rotate({heading_deg}deg);
       box-shadow: 0 0 16px rgba(255, 107, 107, 0.6);
     }}
     .stealth {{
