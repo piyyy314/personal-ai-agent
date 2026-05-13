@@ -3,6 +3,7 @@
 Local AI agent using Ollama with bounded memory and privacy-aware caching.
 """
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -26,7 +27,8 @@ except Exception as e:
 DEFAULT_MEMORY_WINDOW = 6
 
 
-def _build_tools(llm):
+def _build_tools(llm: Any) -> list[Any]:
+    """Build the reusable tool list for the Ollama-backed local agent."""
     llm_math = LLMMathChain.from_llm(llm=llm)
     return [
         Tool(
@@ -37,7 +39,8 @@ def _build_tools(llm):
     ]
 
 
-def _build_agent_executor(memory_enabled: bool):
+def _build_agent_executor(memory_enabled: bool) -> Any:
+    """Construct a local agent executor with optional bounded memory."""
     model_name = os.getenv("OLLAMA_MODEL", "qwen2:7b")
     llm = Ollama(
         model=model_name,
@@ -62,7 +65,7 @@ def _build_agent_executor(memory_enabled: bool):
     )
 
 
-def create_agent():
+def create_agent() -> Any:
     response_cache = PrivacyAwareResponseCache(
         max_entries=get_validated_env_int("AGENT_CACHE_MAX_ENTRIES", 128),
         ttl_seconds=get_validated_env_int("AGENT_CACHE_TTL_SECONDS", 300),

@@ -3,6 +3,7 @@
 Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -28,7 +29,8 @@ except Exception as e:
 DEFAULT_MEMORY_WINDOW = 6
 
 
-def _build_tools(llm):
+def _build_tools(llm: Any) -> list[Any]:
+    """Build the reusable tool list for the hosted OpenAI-backed agent."""
     tools = []
 
     serp_key = os.getenv("SERPAPI_API_KEY")
@@ -53,7 +55,8 @@ def _build_tools(llm):
     return tools
 
 
-def _build_agent_executor(memory_enabled: bool):
+def _build_agent_executor(memory_enabled: bool) -> Any:
+    """Construct an agent executor with optional bounded conversation memory."""
     llm = OpenAI(temperature=0, max_tokens=800)
     tools = _build_tools(llm)
     memory = None
@@ -73,7 +76,7 @@ def _build_agent_executor(memory_enabled: bool):
     )
 
 
-def create_agent():
+def create_agent() -> Any:
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         raise RuntimeError("OPENAI_API_KEY not set in environment (see .env.example)")

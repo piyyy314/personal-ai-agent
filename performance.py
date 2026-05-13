@@ -19,10 +19,12 @@ AgentFactory = Callable[[], Any]
 
 
 def normalize_prompt(prompt: str) -> str:
+    """Collapse repeated whitespace and trim prompt edges for stable cache keys."""
     return " ".join(prompt.split())
 
 
 def get_validated_env_int(name: str, default: int, minimum: int = 0) -> int:
+    """Read an integer env var and raise ValueError when it falls below minimum."""
     value = int(os.getenv(name, str(default)))
     if value < minimum:
         raise ValueError(f"{name} must be >= {minimum}")
