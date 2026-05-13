@@ -173,8 +173,8 @@ async def analyze_aircraft(
 async def aircraft_visualization(
     altitude: float = Query(32000, ge=0),
     speed: float = Query(480, ge=0),
-    heading: float = 75,
-    stealth: bool = False,
+    heading: float = Query(75, description="Aircraft heading in degrees."),
+    stealth: bool = Query(False, description="Whether stealth mode is enabled."),
     _: None = Depends(require_api_key),
 ) -> HTMLResponse:
     snapshot = AircraftSnapshot(

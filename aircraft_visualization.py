@@ -352,7 +352,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
         </div>
         <div>
           <label for="stealth">Stealth Enabled</label>
-          <input id="stealth" name="stealth" type="checkbox" value="true" aria-label="Stealth Enabled" {"checked" if snapshot.stealth_enabled else ""}>
+          <input id="stealth" name="stealth" type="checkbox" value="true" {"checked" if snapshot.stealth_enabled else ""}>
         </div>
         <button type="submit">Update Modules</button>
       </form>
