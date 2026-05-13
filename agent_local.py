@@ -19,6 +19,8 @@ try:
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements_local.txt") from e
 
+DEFAULT_MEMORY_WINDOW = 6
+
 
 def _build_tools(llm):
     llm_math = LLMMathChain.from_llm(llm=llm)
@@ -41,7 +43,7 @@ def _build_agent_executor(memory_enabled: bool):
     memory = None
     if memory_enabled:
         memory = ConversationBufferWindowMemory(
-            k=max(1, int(os.getenv("AGENT_MEMORY_WINDOW", "6"))),
+            k=max(1, int(os.getenv("AGENT_MEMORY_WINDOW", str(DEFAULT_MEMORY_WINDOW)))),
             memory_key="chat_history",
             return_messages=True,
         )

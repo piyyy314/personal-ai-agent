@@ -129,7 +129,7 @@ async def chat(
                 "status": "success",
                 "source": "api",
                 "stealth": request.stealth,
-                "cache_hit": bool(result.get("cache_hit")),
+                "cache_hit": result.get("cache_hit", False),
             },
         )
         return JSONResponse(
@@ -137,8 +137,8 @@ async def chat(
                 "response": reply,
                 "latency_ms": round(duration * 1000, 2),
                 "suspicious": suspicious,
-                "cache_hit": bool(result.get("cache_hit")),
-                "stealth": bool(result.get("stealth")),
+                "cache_hit": result.get("cache_hit", False),
+                "stealth": result.get("stealth", False),
             }
         )
     except Exception as run_error:

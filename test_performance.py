@@ -51,6 +51,12 @@ class PerformanceTests(unittest.TestCase):
         self.assertTrue(second["cache_hit"])
         self.assertEqual(1, len(primary.calls))
 
+    def test_negative_cache_settings_raise_value_error(self):
+        with self.assertRaises(ValueError):
+            PrivacyAwareResponseCache(max_entries=-1)
+        with self.assertRaises(ValueError):
+            PrivacyAwareResponseCache(ttl_seconds=-1)
+
     def test_stealth_requests_use_stateless_agent_path(self):
         primary = FakeAgent("primary")
         stealth = FakeAgent("stealth")

@@ -30,12 +30,16 @@ class PrivacyAwareResponseCache:
         on_event: Optional[CacheEventCallback] = None,
         on_size_change: Optional[CacheSizeCallback] = None,
     ) -> None:
-        self.max_entries = max(0, max_entries)
-        self.ttl_seconds = max(0, ttl_seconds)
+        if max_entries < 0:
+            raise ValueError("max_entries must be >= 0")
+        if ttl_seconds < 0:
+            raise ValueError("ttl_seconds must be >= 0")
+        self.max_entries = max_entries
+        self.ttl_seconds = ttl_seconds
         self._clock = clock
         self._on_event = on_event
         self._on_size_change = on_size_change
-        self._entries: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._entries: OrderedDict[str, Dict[str, Any]] = OrderedDict()
         self._lock = RLock()
 
     def _mode(self, stealth: bool) -> str:
