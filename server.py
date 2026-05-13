@@ -4,11 +4,16 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
+import math
+import random
+import threading
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
@@ -48,6 +53,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 agent = create_agent()
 
+_DASHBOARD_HTML_PATH = Path(__file__).with_name("dashboard.html")
+_AIRCRAFT_LOCK = threading.Lock()
+_AIRCRAFT_STATE: list[dict] = []
+_LAST_AIRCRAFT_UPDATE = time.time()
+
 
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt for the AI agent.")
@@ -57,6 +67,68 @@ class ChatResponse(BaseModel):
     response: str
     latency_ms: float
     suspicious: Optional[str] = None
+
+
+def _build_aircraft_state(count: int = 24) -> list[dict]:
+    aircraft_types = ["commercial", "cargo", "military", "private", "drone"]
+    state: list[dict] = []
+    for idx in range(count):
+        angle = random.uniform(0, 360)
+        radius = random.uniform(12, 95)
+        heading = random.uniform(0, 360)
+        speed = random.uniform(120, 620)
+        altitude = random.uniform(1500, 43000)
+        state.append(
+            {
+                "id": f"AC{idx + 1:03d}",
+                "call_sign": f"PX{random.randint(100, 999)}",
+                "type": random.choice(aircraft_types),
+                "stealth": random.random() < 0.18,
+                "x": math.sin(math.radians(angle)) * radius,
+                "y": math.cos(math.radians(angle)) * radius,
+                "heading": heading,
+                "speed_kts": speed,
+                "altitude_ft": altitude,
+            }
+        )
+    return state
+
+
+def _update_aircraft_state() -> list[dict]:
+    global _AIRCRAFT_STATE, _LAST_AIRCRAFT_UPDATE
+    now = time.time()
+    dt = max(now - _LAST_AIRCRAFT_UPDATE, 0.1)
+    _LAST_AIRCRAFT_UPDATE = now
+    if not _AIRCRAFT_STATE:
+        _AIRCRAFT_STATE = _build_aircraft_state()
+
+    for aircraft in _AIRCRAFT_STATE:
+        speed_nm_per_sec = aircraft["speed_kts"] / 3600.0
+        distance = speed_nm_per_sec * dt
+        angle_radians = math.radians(aircraft["heading"])
+        aircraft["x"] += math.sin(angle_radians) * distance
+        aircraft["y"] += math.cos(angle_radians) * distance
+        aircraft["heading"] = (aircraft["heading"] + random.uniform(-4.0, 4.0)) % 360
+        aircraft["altitude_ft"] = min(
+            45000.0, max(500.0, aircraft["altitude_ft"] + random.uniform(-220.0, 220.0))
+        )
+        if math.hypot(aircraft["x"], aircraft["y"]) > 100:
+            aircraft["heading"] = (aircraft["heading"] + 180) % 360
+
+    return [
+        {
+            "id": aircraft["id"],
+            "call_sign": aircraft["call_sign"],
+            "type": aircraft["type"],
+            "stealth": aircraft["stealth"],
+            "x": round(aircraft["x"], 3),
+            "y": round(aircraft["y"], 3),
+            "heading": round(aircraft["heading"], 1),
+            "speed_kts": round(aircraft["speed_kts"], 1),
+            "altitude_ft": round(aircraft["altitude_ft"], 1),
+        }
+        for aircraft in _AIRCRAFT_STATE
+    ]
 
 
 def require_api_key(request: Request) -> None:
@@ -135,3 +207,14 @@ async def chat(
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
 
+
+@app.get("/v1/aircraft/live")
+async def live_aircraft() -> dict:
+    with _AIRCRAFT_LOCK:
+        aircraft = _update_aircraft_state()
+    return {"aircraft": aircraft, "updated_at": round(time.time() * 1000)}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard() -> HTMLResponse:
+    return HTMLResponse(_DASHBOARD_HTML_PATH.read_text(encoding="utf-8"))

@@ -23,6 +23,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 ### Option 1: FastAPI service (production-ready, monitored)
 - Requires OpenAI key (or swap LLM implementation).
 - Exposes `/v1/chat`, `/healthz`, and `/metrics` for Prometheus.
+- Includes an interactive aircraft radar/map dashboard at `/dashboard` backed by `/v1/aircraft/live`.
 - Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
 
 ### Option 2: Cloud-Based CLI (OpenAI)
