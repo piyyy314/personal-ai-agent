@@ -100,6 +100,7 @@ async def chat(
         record_security_event(suspicious)
         audit_event("suspicious_query", {"pattern": suspicious, "source": "api"})
 
+    audit_event("query", {"query_length": len(request.prompt), "source": "api"})
     start_time = timer()
     try:
         reply = agent.invoke({"input": request.prompt})["output"]
@@ -111,6 +112,7 @@ async def chat(
                 "latency_ms": round(duration * 1000, 2),
                 "status": "success",
                 "source": "api",
+                "response_length": len(reply),
             },
         )
         return JSONResponse(
@@ -134,4 +136,3 @@ async def chat(
             },
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
-

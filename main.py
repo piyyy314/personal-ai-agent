@@ -44,6 +44,7 @@ def main():
                 record_security_event(suspicious)
                 audit_event("suspicious_query", {"pattern": suspicious})
 
+            audit_event("query", {"query_length": len(query), "source": "cli"})
             start_time = timer()
             try:
                 response = agent.invoke({"input": query})["output"]
@@ -54,6 +55,8 @@ def main():
                     {
                         "latency_ms": round(duration * 1000, 2),
                         "status": "success",
+                        "response_length": len(response),
+                        "source": "cli",
                     },
                 )
                 print("\nAgent:", response)
