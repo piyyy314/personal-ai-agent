@@ -15,6 +15,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - **Multi-Channel Alerting**: Slack, PagerDuty, email notifications
 - **Compliance**: Audit logging, GDPR/SOC2 alignment, data retention policies
 - **Security**: Container hardening, encryption, access controls
+- **Historical Flight Replay**: File-backed aircraft movement history with indexed replay/timeline analysis
 - **High Availability**: Kubernetes deployment, health checks, auto-restart
 - **Incident Response**: Forensic tools, emergency procedures, runbooks
 
@@ -133,6 +134,33 @@ kubectl apply -f deploy/kubernetes/deployment.yml
 
 - `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
+- `/v1/flights/history` - Store a historical aircraft movement point
+- `/v1/flights/timeline` - Build investigation-ready timeline layers across one or many aircraft
+- `/v1/flights/{aircraft_id}/replay` - Replay a historical track with optional sampling
+
+### Historical Flight Tracking API
+
+Store an observation:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"aircraft_id":"EAGLE1","timestamp":"2026-01-01T12:00:00Z","latitude":38.8,"longitude":-77.0,"altitude_ft":12000,"event_type":"position","source":"ads-b"}' \
+  http://localhost:8000/v1/flights/history
+```
+
+Replay a track:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" \
+  "http://localhost:8000/v1/flights/EAGLE1/replay?interval_seconds=60"
+```
+
+Build a forensic timeline:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" \
+  "http://localhost:8000/v1/flights/timeline?start_time=2026-01-01T00:00:00Z&end_time=2026-01-02T00:00:00Z"
+```
 
 ## Health Check
 
