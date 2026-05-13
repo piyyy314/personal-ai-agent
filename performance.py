@@ -73,6 +73,9 @@ class PrivacyAwareResponseCache:
     def _enabled(self) -> bool:
         return self.max_entries > 0 and self.ttl_seconds > 0
 
+    def _is_valid_cache_data(self, normalized_prompt: str, response: str) -> bool:
+        return bool(normalized_prompt and response and self._enabled())
+
     def get(self, prompt: str, stealth: bool = False) -> Optional[str]:
         if not self._enabled():
             self._emit_event("disabled", stealth)
@@ -95,7 +98,7 @@ class PrivacyAwareResponseCache:
 
     def set(self, prompt: str, response: str, stealth: bool = False) -> None:
         normalized = normalize_prompt(prompt)
-        if not normalized or not response or not self._enabled():
+        if not self._is_valid_cache_data(normalized, response):
             return
 
         key = self._cache_key(prompt, stealth)

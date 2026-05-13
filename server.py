@@ -53,7 +53,7 @@ class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt for the AI agent.")
     stealth: bool = Field(
         default=False,
-        description="When true, handles the request without conversational memory growth.",
+        description="When true, uses a stateless agent path that does not persist session history.",
     )
     use_cache: bool = Field(
         default=True,

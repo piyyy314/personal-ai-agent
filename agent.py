@@ -26,7 +26,7 @@ try:
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
 
-DEFAULT_MEMORY_WINDOW = 6
+DEFAULT_MEMORY_WINDOW_TURNS = 6
 
 
 def _build_tools(llm: Any) -> list[Any]:
@@ -62,7 +62,9 @@ def _build_agent_executor(memory_enabled: bool) -> Any:
     memory = None
     if memory_enabled:
         memory = ConversationBufferWindowMemory(
-            k=get_validated_env_int("AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW, minimum=1),
+            k=get_validated_env_int(
+                "AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW_TURNS, minimum=1
+            ),
             memory_key="chat_history",
             return_messages=True,
         )
