@@ -5,9 +5,10 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
 from contextlib import asynccontextmanager
+from threading import Lock
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -52,6 +53,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 agent = None
+agent_lock = Lock()
 
 
 class ChatRequest(BaseModel):
@@ -76,7 +78,9 @@ class AircraftAnalysisRequest(BaseModel):
 def get_agent():
     global agent
     if agent is None:
-        agent = create_agent()
+        with agent_lock:
+            if agent is None:
+                agent = create_agent()
     return agent
 
 
@@ -172,15 +176,15 @@ async def analyze_aircraft(
 
 @app.get("/aircraft/visualization", response_class=HTMLResponse)
 async def aircraft_visualization(
-    altitude: float = 32000,
-    speed: float = 480,
+    altitude: float = Query(32000, ge=0),
+    speed: float = Query(480, ge=0),
     heading: float = 75,
     stealth: bool = False,
     _: None = Depends(require_api_key),
 ) -> HTMLResponse:
     snapshot = AircraftSnapshot(
-        altitude_ft=max(0, altitude),
-        speed_kts=max(0, speed),
+        altitude_ft=altitude,
+        speed_kts=speed,
         heading_deg=heading,
         stealth_enabled=stealth,
     )
