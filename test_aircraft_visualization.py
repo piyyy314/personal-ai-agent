@@ -35,6 +35,22 @@ class AircraftVisualizationTests(unittest.TestCase):
             analysis["security"]["flags"],
         )
 
+    def test_stealth_profile_can_report_low_exposure(self):
+        analysis = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=28000,
+                speed_kts=420,
+                heading_deg=30,
+                stealth_enabled=True,
+            )
+        )
+
+        self.assertEqual(analysis["security"]["exposure_level"], "low")
+        self.assertEqual(
+            analysis["advanced"]["general_direction"],
+            "eastbound",
+        )
+
     def test_html_render_contains_visualization_modules(self):
         html = render_aircraft_visualization(
             AircraftSnapshot(

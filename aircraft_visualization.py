@@ -105,7 +105,9 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
             "altitude_band": altitude_label,
             "speed_band": speed_label,
             "energy_state": profile,
-            "turn_axis": "eastbound" if 0 <= normalized_heading < 180 else "westbound",
+            "general_direction": "eastbound"
+            if 0 <= normalized_heading < 180
+            else "westbound",
         },
         "security": {
             "exposure_level": exposure,
@@ -116,6 +118,8 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
 
 
 def clamped_ratio(value: float, maximum: float) -> float:
+    if maximum <= 0:
+        return 0.0
     return min(max(value, 0), maximum) / maximum
 
 
@@ -348,7 +352,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
         </div>
         <div>
           <label for="stealth">Stealth Enabled</label>
-          <input id="stealth" name="stealth" type="checkbox" value="true" {"checked" if snapshot.stealth_enabled else ""}>
+          <input id="stealth" name="stealth" type="checkbox" value="true" aria-label="Stealth Enabled" {"checked" if snapshot.stealth_enabled else ""}>
         </div>
         <button type="submit">Update Modules</button>
       </form>
@@ -370,7 +374,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
       <article class="panel">
         <div class="eyebrow">Heading Module</div>
         <div class="metric">{analysis["basic"]["heading_deg"]:.1f}°</div>
-        <div class="subtle">{escape(analysis["basic"]["heading_sector"])} / {escape(analysis["advanced"]["turn_axis"])}</div>
+        <div class="subtle">{escape(analysis["basic"]["heading_sector"])} / {escape(analysis["advanced"]["general_direction"])}</div>
         <div class="compass"><div class="needle"></div></div>
       </article>
       <article class="panel">
@@ -390,7 +394,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
           <li>Altitude band: {escape(analysis["advanced"]["altitude_band"])}</li>
           <li>Speed band: {escape(analysis["advanced"]["speed_band"])}</li>
           <li>Heading sector: {escape(analysis["basic"]["heading_sector"])}</li>
-          <li>Turn axis: {escape(analysis["advanced"]["turn_axis"])}</li>
+          <li>General direction: {escape(analysis["advanced"]["general_direction"])}</li>
         </ul>
       </article>
       <article class="panel">

@@ -75,6 +75,7 @@ class AircraftAnalysisRequest(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_agent():
+    """Initialize the LangChain agent once and reuse it across API requests."""
     return create_agent()
 
 
