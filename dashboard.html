@@ -177,7 +177,7 @@
       <canvas id="radar"></canvas>
       <div class="map-overlay">
         <div><strong>OPS VIEW:</strong> Interactive Radar / Analytic Map</div>
-        <div>Range: 100nm • Refresh: 2s</div>
+        <div id="refreshInfo">Range: 100nm • Refresh: --</div>
         <div id="meta">Filtered: 0 aircraft</div>
       </div>
     </main>
@@ -189,6 +189,13 @@
     const selectionNode = document.getElementById("selection");
     const statusNode = document.getElementById("status");
     const metaNode = document.getElementById("meta");
+    const refreshInfoNode = document.getElementById("refreshInfo");
+    const LIVE_REFRESH_MS = 2000;
+    const DEFAULT_RANGE_NM = 100;
+    const DEFAULT_MAX_ALTITUDE_FILTER = Number.MAX_SAFE_INTEGER;
+    const DEFAULT_MAX_SPEED_FILTER = Number.MAX_SAFE_INTEGER;
+    const TRAIL_HISTORY_LENGTH = 8;
+    const PRECISION_PICK_DISTANCE_PX = { coarse: 18, standard: 12, fine: 7 };
     const controls = {
       precision: document.getElementById("precision"),
       typeFilter: document.getElementById("typeFilter"),
@@ -207,7 +214,10 @@
     let filtered = [];
     let selectedId = null;
     const trailMap = new Map();
-    const precisionPickDistance = { coarse: 18, standard: 12, fine: 7 };
+    function renderRefreshInfo(rangeNm = DEFAULT_RANGE_NM) {
+      return `Range: ${rangeNm}nm • Refresh: ${(LIVE_REFRESH_MS / 1000).toFixed(0)}s`;
+    }
+    refreshInfoNode.textContent = renderRefreshInfo(DEFAULT_RANGE_NM);
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -267,7 +277,7 @@
         const isSelected = ac.id === selectedId;
         if (controls.overlayTracks.checked) {
           const trail = trailMap.get(ac.id) || [];
-          trailMap.set(ac.id, [...trail.slice(-8), [ac.x, ac.y]]);
+          trailMap.set(ac.id, [...trail.slice(-TRAIL_HISTORY_LENGTH), [ac.x, ac.y]]);
           ctx.strokeStyle = "rgba(106,247,209,0.22)";
           ctx.beginPath();
           trailMap.get(ac.id).forEach(([tx, ty], index) => {
@@ -305,9 +315,9 @@
     function applyFilters() {
       const query = controls.search.value.trim().toLowerCase();
       const altMin = toNumber(controls.altMin.value, 0);
-      const altMax = toNumber(controls.altMax.value, 999999);
+      const altMax = toNumber(controls.altMax.value, DEFAULT_MAX_ALTITUDE_FILTER);
       const speedMin = toNumber(controls.speedMin.value, 0);
-      const speedMax = toNumber(controls.speedMax.value, 999999);
+      const speedMax = toNumber(controls.speedMax.value, DEFAULT_MAX_SPEED_FILTER);
       filtered = aircraft.filter((ac) => {
         if (!controls.showStealth.checked && ac.stealth) return false;
         if (controls.typeFilter.value !== "all" && ac.type !== controls.typeFilter.value) return false;
@@ -344,13 +354,17 @@
     async function refreshLiveData() {
       try {
         const response = await fetch("/v1/aircraft/live", { cache: "no-store" });
-        if (!response.ok) throw new Error(`Feed failed (${response.status})`);
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(`HTTP ${response.status}: ${detail || "feed request failed"}`);
+        }
         const payload = await response.json();
         aircraft = payload.aircraft || [];
         statusNode.textContent = `Live feed ok • ${new Date(payload.updated_at).toLocaleTimeString()}`;
+        refreshInfoNode.textContent = renderRefreshInfo(payload.range_nm || DEFAULT_RANGE_NM);
         applyFilters();
       } catch (error) {
-        statusNode.innerHTML = `<span class="danger">Feed error:</span> ${error.message}`;
+        statusNode.innerHTML = `<span class="danger">Feed error:</span> ${error.message || "Network error"}`;
       }
     }
 
@@ -358,7 +372,7 @@
       const rect = canvas.getBoundingClientRect();
       const clickX = event.clientX - rect.left;
       const clickY = event.clientY - rect.top;
-      const pickRadius = precisionPickDistance[controls.precision.value] || 12;
+      const pickRadius = PRECISION_PICK_DISTANCE_PX[controls.precision.value] || 12;
       let picked = null;
       let bestDistance = Infinity;
       for (const ac of filtered) {
@@ -382,7 +396,7 @@
     window.addEventListener("resize", resize);
     resize();
     refreshLiveData();
-    setInterval(refreshLiveData, 2000);
+    setInterval(refreshLiveData, LIVE_REFRESH_MS);
   </script>
 </body>
 </html>
