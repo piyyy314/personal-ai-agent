@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime
+import hashlib
+import json
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
@@ -24,6 +26,9 @@ SEARCH_FIELDS = (
     "description",
     "notes",
 )
+EMERGENCY_SQUAWK_CODES = {"7500", "7600", "7700"}
+CRITICAL_EVENT_TYPES = {"intercept", "surveillance", "airspace_violation"}
+HIGH_SEVERITY_LEVELS = {"high", "critical"}
 RESERVED_FILTER_KEYS = {
     "text",
     "fields",
@@ -77,11 +82,14 @@ def _record_text(record: Dict[str, Any]) -> str:
     parts: List[str] = []
     for key, value in record.items():
         if isinstance(value, dict):
-            parts.extend(f"{key}:{sub_key}={sub_value}" for sub_key, sub_value in value.items())
+            parts.extend(
+                f"{str(key)}:{str(sub_key)}={str(sub_value)}"
+                for sub_key, sub_value in value.items()
+            )
         elif isinstance(value, (list, tuple, set)):
-            parts.extend(f"{key}:{item}" for item in value)
+            parts.extend(f"{str(key)}:{str(item)}" for item in value)
         else:
-            parts.append(f"{key}:{value}")
+            parts.append(f"{str(key)}:{str(value)}")
     return " ".join(parts).lower()
 
 
@@ -112,6 +120,12 @@ def _timeline_buckets(records: Sequence[Dict[str, Any]], timestamp_field: str) -
     return [{"bucket": bucket, "count": count} for bucket, count in sorted(counts.items())]
 
 
+def _stable_record_id(record: Dict[str, Any], prefix: str) -> str:
+    payload = json.dumps(record, sort_keys=True, default=str)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    return f"{prefix}-{digest}"
+
+
 def _boolean_flag(record: Dict[str, Any], *names: str) -> bool:
     truthy = {"1", "true", "yes", "on"}
     for name in names:
@@ -125,6 +139,12 @@ def _boolean_flag(record: Dict[str, Any], *names: str) -> bool:
     return False
 
 
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return _normalize_text(value) in {"1", "true", "yes", "on"}
+
+
 def build_signal_flags(record: Dict[str, Any]) -> List[str]:
     signals: List[str] = []
     squawk = _normalize_text(record.get("squawk"))
@@ -134,7 +154,7 @@ def build_signal_flags(record: Dict[str, Any]) -> List[str]:
     tags = {_normalize_text(tag) for tag in _iter_values(record.get("tags"))}
     callsign = _normalize_text(record.get("callsign"))
 
-    if squawk in {"7500", "7600", "7700"}:
+    if squawk in EMERGENCY_SQUAWK_CODES:
         signals.append(f"emergency_squawk_{squawk}")
     if not callsign:
         signals.append("missing_callsign")
@@ -206,7 +226,7 @@ def filter_flights(flights: Sequence[Dict[str, Any]], filters: Optional[Dict[str
             continue
 
         for field, expected in boolean_filters.items():
-            if bool(flight.get(field)) is not bool(expected):
+            if _coerce_bool(flight.get(field)) != _coerce_bool(expected):
                 failed = True
                 break
         if failed:
@@ -323,7 +343,12 @@ def build_analytic_overlays(
         signals = build_signal_flags(flight)
         if signals:
             entry = {
-                "id": flight.get("id") or flight.get("flight_id") or flight.get("callsign"),
+                "id": (
+                    flight.get("id")
+                    or flight.get("flight_id")
+                    or flight.get("callsign")
+                    or _stable_record_id(flight, "flight")
+                ),
                 "callsign": flight.get("callsign"),
                 "signals": signals,
                 "risk_score": len(signals),
@@ -335,11 +360,7 @@ def build_analytic_overlays(
     flagged_events = []
     for event in events:
         severity = _normalize_text(event.get("severity"))
-        if severity in {"high", "critical"} or _normalize_text(event.get("event_type")) in {
-            "intercept",
-            "surveillance",
-            "airspace_violation",
-        }:
+        if severity in HIGH_SEVERITY_LEVELS or _normalize_text(event.get("event_type")) in CRITICAL_EVENT_TYPES:
             flagged_events.append(dict(event))
 
     return {

@@ -190,4 +190,7 @@ async def flight_analysis(
                 "error": str(run_error),
             },
         )
-        raise HTTPException(status_code=400, detail="Flight analysis failed") from run_error
+        raise HTTPException(
+            status_code=400,
+            detail=f"Flight analysis failed: {run_error.__class__.__name__}",
+        ) from run_error
