@@ -76,7 +76,7 @@ def configure_logging() -> None:
 
     audit_logger = logging.getLogger("audit")
     for handler in list(audit_logger.handlers):
-        if getattr(handler, "_managed_by_agent", False):
+        if getattr(handler, "managed_by_configure_logging", False):
             audit_logger.removeHandler(handler)
             handler.close()
     audit_logger.setLevel(logging.INFO)
@@ -87,7 +87,7 @@ def configure_logging() -> None:
             if audit_log_dir:
                 os.makedirs(audit_log_dir, exist_ok=True)
             file_handler = logging.FileHandler(audit_log_path)
-            file_handler._managed_by_agent = True
+            file_handler.managed_by_configure_logging = True
             file_handler.setFormatter(formatter)
             audit_logger.addHandler(file_handler)
         except OSError as exc:
@@ -149,7 +149,7 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
     metadata = dict(details or {})
-    # Prefer "outcome" for new callers; "status" remains supported for existing ones.
+    # New callers should use "outcome"; "status" is accepted for legacy compatibility.
     if "outcome" in metadata:
         outcome = metadata.pop("outcome")
     elif "status" in metadata:

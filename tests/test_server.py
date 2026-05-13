@@ -17,7 +17,7 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 
-def load_server_module(*, reply: str = "stubbed response", auth_token: str = "secret", auth_disabled_value: str = "false"):
+def load_server_module(*, reply: str = "stubbed response", auth_token: str = "secret", auth_disabled_str: str = "false"):
     fake_agent = types.SimpleNamespace(invoke=lambda payload: {"output": reply})
     fake_agent_module = types.ModuleType("agent")
     fake_agent_module.create_agent = lambda: fake_agent
@@ -26,7 +26,7 @@ def load_server_module(*, reply: str = "stubbed response", auth_token: str = "se
     sys.modules.pop("server", None)
     with mock.patch.dict(
         os.environ,
-        {"API_AUTH_TOKEN": auth_token, "AUTH_DISABLED": auth_disabled_value},
+        {"API_AUTH_TOKEN": auth_token, "AUTH_DISABLED": auth_disabled_str},
         clear=False,
     ):
         module = importlib.import_module("server")
