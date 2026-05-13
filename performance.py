@@ -124,6 +124,16 @@ class PerformanceTunedAgent:
             self._stealth_agent = self._stealth_agent_factory()
         return self._stealth_agent or self._primary_agent
 
+    def _normalize_result(self, result: Any) -> Dict[str, Any]:
+        if isinstance(result, dict):
+            output = result.get("output")
+            if not isinstance(output, str):
+                raise TypeError("Agent responses must include a string 'output' value.")
+            return dict(result)
+        if isinstance(result, str):
+            return {"output": result}
+        raise TypeError("Agent responses must be a string or a dict containing 'output'.")
+
     def invoke(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         request = dict(payload)
         prompt = str(request.get("input", ""))
@@ -142,14 +152,11 @@ class PerformanceTunedAgent:
             self._on_cache_event("bypass", mode)
 
         agent = self._resolve_agent(stealth)
-        result = agent.invoke(request)
-        output = result["output"] if isinstance(result, dict) else result
+        result = self._normalize_result(agent.invoke(request))
+        output = result["output"]
         if use_cache and self._response_cache and isinstance(output, str):
             self._response_cache.set(prompt, output, stealth=stealth)
 
-        if isinstance(result, dict):
-            wrapped = dict(result)
-            wrapped["cache_hit"] = False
-            wrapped["stealth"] = stealth
-            return wrapped
-        return {"output": output, "cache_hit": False, "stealth": stealth}
+        result["cache_hit"] = False
+        result["stealth"] = stealth
+        return result

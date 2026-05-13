@@ -21,6 +21,11 @@ class FakeAgent:
         return {"output": f"{self.prefix}:{payload['input']}"}
 
 
+class BrokenAgent:
+    def invoke(self, payload):
+        return {"output": 123}
+
+
 class PerformanceTests(unittest.TestCase):
     def test_cache_uses_hashed_privacy_preserving_keys(self):
         clock = FakeClock()
@@ -56,6 +61,12 @@ class PerformanceTests(unittest.TestCase):
             PrivacyAwareResponseCache(max_entries=-1)
         with self.assertRaises(ValueError):
             PrivacyAwareResponseCache(ttl_seconds=-1)
+
+    def test_invalid_agent_output_raises_type_error(self):
+        wrapper = PerformanceTunedAgent(primary_agent=BrokenAgent())
+
+        with self.assertRaises(TypeError):
+            wrapper.invoke({"input": "hello"})
 
     def test_stealth_requests_use_stateless_agent_path(self):
         primary = FakeAgent("primary")

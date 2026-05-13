@@ -24,6 +24,13 @@ except Exception as e:
 DEFAULT_MEMORY_WINDOW = 6
 
 
+def _memory_window_size() -> int:
+    size = int(os.getenv("AGENT_MEMORY_WINDOW", str(DEFAULT_MEMORY_WINDOW)))
+    if size < 1:
+        raise ValueError("AGENT_MEMORY_WINDOW must be >= 1")
+    return size
+
+
 def _build_tools(llm):
     tools = []
 
@@ -55,7 +62,7 @@ def _build_agent_executor(memory_enabled: bool):
     memory = None
     if memory_enabled:
         memory = ConversationBufferWindowMemory(
-            k=max(1, int(os.getenv("AGENT_MEMORY_WINDOW", str(DEFAULT_MEMORY_WINDOW)))),
+            k=_memory_window_size(),
             memory_key="chat_history",
             return_messages=True,
         )

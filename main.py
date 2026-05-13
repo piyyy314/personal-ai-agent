@@ -19,6 +19,8 @@ from monitoring import (
     timer,
 )
 
+STEALTH_PREFIX = "/stealth "
+
 
 def main():
     load_dotenv()
@@ -40,9 +42,9 @@ def main():
                 print("Goodbye.")
                 break
             stealth = False
-            if query.startswith("/stealth "):
+            if query.startswith(STEALTH_PREFIX):
                 stealth = True
-                query = query[len("/stealth ") :].strip()
+                query = query[len(STEALTH_PREFIX) :].strip()
                 if not query:
                     continue
 
