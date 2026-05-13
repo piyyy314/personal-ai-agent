@@ -17,7 +17,7 @@ class AircraftSnapshot:
 
 def normalize_heading(heading_deg: float) -> float:
     normalized = heading_deg % 360
-    return 0.0 if normalized == 360 else round(normalized, 1)
+    return round(normalized, 1)
 
 
 def heading_sector(heading_deg: float) -> str:

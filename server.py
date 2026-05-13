@@ -158,7 +158,9 @@ async def chat(
 
 
 @app.post("/v1/aircraft/analyze")
-async def analyze_aircraft(request: AircraftAnalysisRequest) -> JSONResponse:
+async def analyze_aircraft(
+    request: AircraftAnalysisRequest, _: None = Depends(require_api_key)
+) -> JSONResponse:
     snapshot = AircraftSnapshot(
         altitude_ft=request.altitude_ft,
         speed_kts=request.speed_kts,
@@ -174,6 +176,7 @@ async def aircraft_visualization(
     speed: float = 480,
     heading: float = 75,
     stealth: bool = False,
+    _: None = Depends(require_api_key),
 ) -> HTMLResponse:
     snapshot = AircraftSnapshot(
         altitude_ft=max(0, altitude),
