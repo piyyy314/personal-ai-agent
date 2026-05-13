@@ -133,6 +133,8 @@ kubectl apply -f deploy/kubernetes/deployment.yml
 
 - `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
+- `/aircraft/visualization` - Interactive aircraft telemetry dashboard for altitude, speed, heading, and stealth review
+- `/v1/aircraft/analyze` - JSON analytics endpoint for aircraft telemetry snapshots
 
 ## Health Check
 

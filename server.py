@@ -8,9 +8,14 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from aircraft_visualization import (
+    AircraftSnapshot,
+    build_aircraft_analysis,
+    render_aircraft_visualization,
+)
 from dotenv import load_dotenv
 from agent import create_agent
 from health_server import start_health_server
@@ -46,7 +51,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
-agent = create_agent()
+agent = None
 
 
 class ChatRequest(BaseModel):
@@ -57,6 +62,22 @@ class ChatResponse(BaseModel):
     response: str
     latency_ms: float
     suspicious: Optional[str] = None
+
+
+class AircraftAnalysisRequest(BaseModel):
+    altitude_ft: float = Field(..., ge=0, description="Aircraft altitude in feet.")
+    speed_kts: float = Field(..., ge=0, description="Aircraft speed in knots.")
+    heading_deg: float = Field(..., description="Aircraft heading in degrees.")
+    stealth_enabled: bool = Field(
+        False, description="Whether stealth mode or low-observable posture is active."
+    )
+
+
+def get_agent():
+    global agent
+    if agent is None:
+        agent = create_agent()
+    return agent
 
 
 def require_api_key(request: Request) -> None:
@@ -102,7 +123,7 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = agent.invoke({"input": request.prompt})["output"]
+        reply = get_agent().invoke({"input": request.prompt})["output"]
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -135,3 +156,29 @@ async def chat(
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
 
+
+@app.post("/v1/aircraft/analyze")
+async def analyze_aircraft(request: AircraftAnalysisRequest) -> JSONResponse:
+    snapshot = AircraftSnapshot(
+        altitude_ft=request.altitude_ft,
+        speed_kts=request.speed_kts,
+        heading_deg=request.heading_deg,
+        stealth_enabled=request.stealth_enabled,
+    )
+    return JSONResponse(content=build_aircraft_analysis(snapshot))
+
+
+@app.get("/aircraft/visualization", response_class=HTMLResponse)
+async def aircraft_visualization(
+    altitude: float = 32000,
+    speed: float = 480,
+    heading: float = 75,
+    stealth: bool = False,
+) -> HTMLResponse:
+    snapshot = AircraftSnapshot(
+        altitude_ft=max(0, altitude),
+        speed_kts=max(0, speed),
+        heading_deg=heading,
+        stealth_enabled=stealth,
+    )
+    return HTMLResponse(content=render_aircraft_visualization(snapshot))
