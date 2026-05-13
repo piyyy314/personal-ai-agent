@@ -4,8 +4,9 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
+from functools import lru_cache
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
 from agent import create_agent
+from flight_analysis import analyze_flight_operations
 from health_server import start_health_server
 from monitoring import (
     audit_event,
@@ -46,7 +48,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
-agent = create_agent()
+
+
+@lru_cache(maxsize=1)
+def get_agent():
+    return create_agent()
 
 
 class ChatRequest(BaseModel):
@@ -57,6 +63,14 @@ class ChatResponse(BaseModel):
     response: str
     latency_ms: float
     suspicious: Optional[str] = None
+
+
+class FlightAnalysisRequest(BaseModel):
+    flights: List[Dict[str, Any]] = Field(default_factory=list)
+    events: List[Dict[str, Any]] = Field(default_factory=list)
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    search_query: Optional[str] = None
+    search_limit: int = Field(default=10, ge=1, le=100)
 
 
 def require_api_key(request: Request) -> None:
@@ -102,7 +116,7 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = agent.invoke({"input": request.prompt})["output"]
+        reply = get_agent().invoke({"input": request.prompt})["output"]
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -135,3 +149,45 @@ async def chat(
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
 
+
+@app.post("/v1/flight-analysis")
+async def flight_analysis(
+    request: FlightAnalysisRequest, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    start_time = timer()
+    try:
+        result = analyze_flight_operations(
+            flights=request.flights,
+            events=request.events,
+            filters=request.filters,
+            search_query=request.search_query,
+            search_limit=request.search_limit,
+        )
+        duration = timer() - start_time
+        record_request_outcome("success", duration, source="api")
+        audit_event(
+            "flight_analysis",
+            {
+                "flight_count": len(request.flights),
+                "event_count": len(request.events),
+                "filtered_count": len(result["filtered_flights"]),
+                "latency_ms": round(duration * 1000, 2),
+                "status": "success",
+            },
+        )
+        return JSONResponse(content=result)
+    except Exception as run_error:
+        duration = timer() - start_time
+        record_request_outcome("error", duration, source="api")
+        record_security_event("flight_analysis_error")
+        audit_event(
+            "flight_analysis",
+            {
+                "flight_count": len(request.flights),
+                "event_count": len(request.events),
+                "latency_ms": round(duration * 1000, 2),
+                "status": "error",
+                "error": str(run_error),
+            },
+        )
+        raise HTTPException(status_code=400, detail="Flight analysis failed") from run_error

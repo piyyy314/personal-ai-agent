@@ -8,6 +8,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - Conversational memory (in-process)
 - Optional web search via SerpAPI
 - Calculator tool (LLM Math Chain)
+- Flight/event intelligence analysis with filtering, search, and threat overlays
 - CLI loop for local use
 
 ### Production Features
@@ -133,6 +134,7 @@ kubectl apply -f deploy/kubernetes/deployment.yml
 
 - `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
+- `/v1/flight-analysis` - Authenticated JSON analysis endpoint for flight/event filtering, search, and overlays
 
 ## Health Check
 

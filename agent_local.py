@@ -4,7 +4,9 @@ Local AI agent using Ollama (no cloud, fully private).
 Swap this in place of agent.py if you want to run without OpenAI.
 """
 import os
+import json
 from dotenv import load_dotenv
+from flight_analysis import analyze_flight_operations
 
 load_dotenv()
 
@@ -41,6 +43,18 @@ def create_agent():
     
     # Tools
     tools = []
+
+    def run_flight_analysis(payload: str) -> str:
+        """Analyze flight and event intelligence data from a JSON payload."""
+        parsed = json.loads(payload)
+        result = analyze_flight_operations(
+            flights=parsed.get("flights") or [],
+            events=parsed.get("events") or [],
+            filters=parsed.get("filters") or {},
+            search_query=parsed.get("search_query"),
+            search_limit=int(parsed.get("search_limit") or 10),
+        )
+        return json.dumps(result, indent=2, sort_keys=True)
     
     # Math tool
     llm_math = LLMMathChain.from_llm(llm=llm)
@@ -49,6 +63,18 @@ def create_agent():
             name="Calculator",
             func=llm_math.run,
             description="Performs multi-step math calculations."
+        )
+    )
+
+    tools.append(
+        Tool(
+            name="FlightIntel",
+            func=run_flight_analysis,
+            description=(
+                "Analyze flight and event datasets for advanced filtering, search, "
+                "threat signals, and stealth overlays. Input must be JSON with "
+                "flights, optional events, optional filters, and optional search_query."
+            ),
         )
     )
     
