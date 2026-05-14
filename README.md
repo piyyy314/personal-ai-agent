@@ -6,6 +6,8 @@ This project contains a production-ready personal AI agent using LangChain, feat
 
 ### Core Functionality
 - Conversational memory (in-process)
+- Bounded session memory for power-user workloads
+- Privacy-aware response caching with stealth request support
 - Optional web search via SerpAPI
 - Calculator tool (LLM Math Chain)
 - CLI loop for local use
@@ -78,13 +80,14 @@ The production deployment includes:
 6. Test:
    ```bash
    curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
-     -d '{"prompt":"hello"}' http://localhost:8000/v1/chat
+      -d '{"prompt":"hello","stealth":true}' http://localhost:8000/v1/chat
    ```
 
 Or run in CLI mode:
    ```bash
    python main.py
    ```
+   Prefix a prompt with `/stealth ` to avoid growing conversation history for that request.
 
 ### Production Deployment (Docker Compose)
 
@@ -178,6 +181,9 @@ See [COMPLIANCE.md](COMPLIANCE.md) for details.
 - `agent_requests_total` - Total requests by status and source
 - `agent_request_latency_seconds` - Response time histogram
 - `agent_security_events_total` - Security/anomaly events
+- `agent_cache_events_total` - Cache hits, misses, expirations, and bypasses
+- `agent_cache_entries` - Current in-memory cache size
+- `agent_stealth_requests_total` - Low-footprint request count
 - `agent_session_status` - 1 when running, 0 when stopped
 
 ## Alerting
