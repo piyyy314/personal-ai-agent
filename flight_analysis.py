@@ -181,7 +181,7 @@ def filter_flights(flights: Sequence[Dict[str, Any]], filters: Optional[Dict[str
     bounds = dict(filters.get("map_bounds") or filters.get("bounding_box") or {})
     tags_any = {_normalize_text(tag) for tag in _iter_values(filters.get("tags_any"))}
     tags_all = {_normalize_text(tag) for tag in _iter_values(filters.get("tags_all"))}
-    flagged_only = bool(filters.get("flagged_only"))
+    flagged_only = _coerce_bool(filters.get("flagged_only"))
 
     for key, value in filters.items():
         if key in RESERVED_FILTER_KEYS:
