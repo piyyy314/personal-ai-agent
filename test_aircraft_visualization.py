@@ -48,7 +48,7 @@ class AircraftVisualizationTests(unittest.TestCase):
         self.assertEqual(analysis["security"]["exposure_level"], "low")
         self.assertEqual(
             analysis["advanced"]["general_direction"],
-            "eastbound",
+            "northbound",
         )
 
     def test_analysis_reports_cardinal_general_direction(self):
