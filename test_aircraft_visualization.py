@@ -51,6 +51,36 @@ class AircraftVisualizationTests(unittest.TestCase):
             "eastbound",
         )
 
+    def test_analysis_reports_cardinal_general_direction(self):
+        northbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=350,
+                stealth_enabled=False,
+            )
+        )
+        southbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=180,
+                stealth_enabled=False,
+            )
+        )
+        westbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=270,
+                stealth_enabled=False,
+            )
+        )
+
+        self.assertEqual(northbound["advanced"]["general_direction"], "northbound")
+        self.assertEqual(southbound["advanced"]["general_direction"], "southbound")
+        self.assertEqual(westbound["advanced"]["general_direction"], "westbound")
+
     def test_html_render_contains_visualization_modules(self):
         html = render_aircraft_visualization(
             AircraftSnapshot(

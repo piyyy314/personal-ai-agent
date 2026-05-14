@@ -5,6 +5,7 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
 from contextlib import asynccontextmanager
+from functools import lru_cache
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -82,15 +83,10 @@ class AircraftAnalysisRequest(BaseModel):
     )
 
 
-_agent = None
-
-
+@lru_cache(maxsize=1)
 def get_agent():
     """Initialize the LangChain agent once and reuse it across API requests."""
-    global _agent
-    if _agent is None:
-        _agent = create_agent()
-    return _agent
+    return create_agent()
 
 
 def require_api_key(request: Request) -> None:

@@ -8,6 +8,8 @@ from typing import Dict, List
 
 OPERATIONAL_CEILING_FT = 45_000
 MAX_OPERATIONAL_SPEED_KTS = 900
+LOW_EXPOSURE_FLAG_THRESHOLD = 1
+HIGH_EXPOSURE_FLAG_THRESHOLD = 3
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,16 @@ def energy_state(altitude_ft: float, speed_kts: float) -> str:
     return "balanced mission profile"
 
 
+def general_direction(heading_deg: float) -> str:
+    if 45 <= heading_deg < 135:
+        return "eastbound"
+    if 135 <= heading_deg < 225:
+        return "southbound"
+    if 225 <= heading_deg < 315:
+        return "westbound"
+    return "northbound"
+
+
 def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
     normalized_heading = normalize_heading(snapshot.heading_deg)
     altitude_label = altitude_band(snapshot.altitude_ft)
@@ -76,9 +88,9 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
     if snapshot.stealth_enabled and snapshot.altitude_ft > 35_000:
         security_flags.append("High-altitude stealth transit can still be seen by long-range sensors.")
 
-    if snapshot.stealth_enabled and len(security_flags) <= 1:
+    if snapshot.stealth_enabled and len(security_flags) <= LOW_EXPOSURE_FLAG_THRESHOLD:
         exposure = "low"
-    elif len(security_flags) >= 3:
+    elif len(security_flags) >= HIGH_EXPOSURE_FLAG_THRESHOLD:
         exposure = "high"
     else:
         exposure = "medium"
@@ -105,9 +117,7 @@ def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
             "altitude_band": altitude_label,
             "speed_band": speed_label,
             "energy_state": profile,
-            "general_direction": "eastbound"
-            if 0 <= normalized_heading < 180
-            else "westbound",
+            "general_direction": general_direction(normalized_heading),
         },
         "security": {
             "exposure_level": exposure,
