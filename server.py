@@ -51,12 +51,22 @@ agent = create_agent()
 
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt for the AI agent.")
+    stealth: bool = Field(
+        default=False,
+        description="When true, uses a stateless agent path that does not persist session history.",
+    )
+    use_cache: bool = Field(
+        default=True,
+        description="When true, allows privacy-aware response cache reuse.",
+    )
 
 
 class ChatResponse(BaseModel):
     response: str
     latency_ms: float
     suspicious: Optional[str] = None
+    cache_hit: bool = False
+    stealth: bool = False
 
 
 def require_api_key(request: Request) -> None:
@@ -102,7 +112,16 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = agent.invoke({"input": request.prompt})["output"]
+        result = agent.invoke(
+            {
+                "input": request.prompt,
+                "stealth": request.stealth,
+                "use_cache": request.use_cache,
+            }
+        )
+        reply = result["output"]
+        cache_hit = result.get("cache_hit", False)
+        stealth_mode = result.get("stealth", False)
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -111,6 +130,8 @@ async def chat(
                 "latency_ms": round(duration * 1000, 2),
                 "status": "success",
                 "source": "api",
+                "stealth": request.stealth,
+                "cache_hit": cache_hit,
             },
         )
         return JSONResponse(
@@ -118,6 +139,8 @@ async def chat(
                 "response": reply,
                 "latency_ms": round(duration * 1000, 2),
                 "suspicious": suspicious,
+                "cache_hit": cache_hit,
+                "stealth": stealth_mode,
             }
         )
     except Exception as run_error:
@@ -134,4 +157,3 @@ async def chat(
             },
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
-
