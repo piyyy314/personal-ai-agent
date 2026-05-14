@@ -77,7 +77,10 @@ class ChatResponse(BaseModel):
 class AircraftAnalysisRequest(BaseModel):
     altitude_ft: float = Field(..., ge=0, description="Aircraft altitude in feet.")
     speed_kts: float = Field(..., ge=0, description="Aircraft speed in knots.")
-    heading_deg: float = Field(..., description="Aircraft heading in degrees.")
+    heading_deg: float = Field(
+        ...,
+        description="Aircraft heading in degrees. Values outside 0-360 are normalized before analysis.",
+    )
     stealth_enabled: bool = Field(
         False, description="Whether stealth mode or low-observable posture is active."
     )
@@ -204,7 +207,10 @@ async def analyze_aircraft(
 async def aircraft_visualization(
     altitude: float = Query(32000, ge=0),
     speed: float = Query(480, ge=0),
-    heading: float = Query(75, description="Aircraft heading in degrees."),
+    heading: float = Query(
+        75,
+        description="Aircraft heading in degrees. Values outside 0-360 are normalized before analysis.",
+    ),
     stealth: bool = Query(False, description="Whether stealth mode is enabled."),
     _: None = Depends(require_api_key),
 ) -> HTMLResponse:
