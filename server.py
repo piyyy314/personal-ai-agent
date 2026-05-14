@@ -6,10 +6,12 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
@@ -26,6 +28,7 @@ from monitoring import (
     timer,
 )
 from prometheus_client import CONTENT_TYPE_LATEST
+from radar_api import router as radar_router, radar_startup_async, radar_shutdown
 
 
 load_dotenv()
@@ -40,25 +43,52 @@ agent = None
 async def lifespan(app: FastAPI):
     configure_logging()
     health_port = int(os.getenv("HEALTH_PORT", "8080"))
-    start_health_server(port=health_port)
+    health_server = start_health_server(port=health_port)
     set_session_status(True)
     audit_event("startup", {"mode": "api"})
+    await radar_startup_async()
     yield
     set_session_status(False)
     audit_event("shutdown", {"mode": "api"})
+    await radar_shutdown()
+    health_server.shutdown()
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 
+# ── Static files & radar dashboard ────────────────────────────────
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# ── Radar API router ───────────────────────────────────────────────
+app.include_router(radar_router)
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard_redirect() -> RedirectResponse:
+    """Redirect top-level /dashboard to the radar ops-center dashboard."""
+    return RedirectResponse(url="/radar/dashboard")
+
 
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt for the AI agent.")
+    stealth: bool = Field(
+        default=False,
+        description="When true, uses a stateless agent path that does not persist session history.",
+    )
+    use_cache: bool = Field(
+        default=True,
+        description="When true, allows privacy-aware response cache reuse.",
+    )
 
 
 class ChatResponse(BaseModel):
     response: str
     latency_ms: float
     suspicious: Optional[str] = None
+    cache_hit: bool = False
+    stealth: bool = False
 
 
 class FlightObservationRequest(BaseModel):
@@ -127,7 +157,16 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = get_agent().invoke({"input": request.prompt})["output"]
+        result = get_agent().invoke(
+            {
+                "input": request.prompt,
+                "stealth": request.stealth,
+                "use_cache": request.use_cache,
+            }
+        )
+        reply = result["output"]
+        cache_hit = result.get("cache_hit", False)
+        stealth_mode = result.get("stealth", False)
         duration = timer() - start_time
         record_request_outcome("success", duration, source="api")
         audit_event(
@@ -136,6 +175,8 @@ async def chat(
                 "latency_ms": round(duration * 1000, 2),
                 "status": "success",
                 "source": "api",
+                "stealth": request.stealth,
+                "cache_hit": cache_hit,
             },
         )
         return JSONResponse(
@@ -143,6 +184,8 @@ async def chat(
                 "response": reply,
                 "latency_ms": round(duration * 1000, 2),
                 "suspicious": suspicious,
+                "cache_hit": cache_hit,
+                "stealth": stealth_mode,
             }
         )
     except Exception as run_error:
