@@ -140,7 +140,8 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
     heading_deg = f'{analysis["basic"]["heading_deg"]:.1f}'
     stealth_text = "ENABLED" if snapshot.stealth_enabled else "DISABLED"
     stealth_class = "on" if snapshot.stealth_enabled else "off"
-    checked_attr = " checked" if snapshot.stealth_enabled else ""
+    stealth_enabled_selected = " selected" if snapshot.stealth_enabled else ""
+    stealth_disabled_selected = "" if snapshot.stealth_enabled else " selected"
     security_flags = analysis["security"]["flags"] or ["No immediate security advisories."]
     recommendations = analysis["security"]["recommendations"]
 
@@ -211,6 +212,20 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
       padding: 10px 12px;
       background: #091220;
       color: var(--text);
+    }}
+    .controls select {{
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid #375170;
+      padding: 10px 12px;
+      background: #091220;
+      color: var(--text);
+    }}
+    .controls-note {{
+      grid-column: 1 / -1;
+      margin: 0;
+      color: var(--warn);
+      font-size: 0.9rem;
     }}
     .controls button {{
       height: 42px;
@@ -366,9 +381,15 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
         </div>
         <div>
           <label for="stealth">Stealth Enabled</label>
-          <input id="stealth" name="stealth" type="checkbox" value="true"{checked_attr}>
+          <select id="stealth" name="stealth">
+            <option value="false"{stealth_disabled_selected}>False</option>
+            <option value="true"{stealth_enabled_selected}>True</option>
+          </select>
         </div>
         <button type="submit">Update Modules</button>
+        <p class="controls-note">
+          Warning: this view uses URL query parameters, so avoid entering sensitive telemetry on shared systems.
+        </p>
       </form>
     </section>
 
