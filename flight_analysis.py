@@ -355,7 +355,7 @@ def build_analytic_overlays(
             }
             threats.append(entry)
             if any(signal in {"dark_flight", "missing_callsign", "fast_low_altitude"} for signal in signals):
-                stealth_tracks.append(entry)
+                stealth_tracks.append(dict(entry))
 
     flagged_events = []
     for event in events:
