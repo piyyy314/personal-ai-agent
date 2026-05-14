@@ -11,21 +11,6 @@ import json
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 
-SEARCH_FIELDS = (
-    "id",
-    "flight_id",
-    "callsign",
-    "tail",
-    "registration",
-    "origin",
-    "destination",
-    "operator",
-    "aircraft_type",
-    "status",
-    "event_type",
-    "description",
-    "notes",
-)
 EMERGENCY_SQUAWK_CODES = {"7500", "7600", "7700"}
 CRITICAL_EVENT_TYPES = {"intercept", "surveillance", "airspace_violation"}
 HIGH_SEVERITY_LEVELS = {"high", "critical"}
