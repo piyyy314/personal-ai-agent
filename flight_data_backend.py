@@ -13,6 +13,10 @@ FEET_PER_METER = 3.28084
 KNOTS_PER_KMH = 0.539957
 KNOTS_PER_MPH = 0.868976
 FPM_PER_MPS = 196.850394
+LOW_OBSERVABILITY_INDEX = 0.35
+NORMAL_OBSERVABILITY_INDEX = 0.8
+HIGH_SPEED_THRESHOLD_KTS = 450
+LOW_ALTITUDE_THRESHOLD_FT = 10000
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -128,7 +132,9 @@ def _visibility_profile(points: Iterable[Dict[str, object]], stealth_mode: bool)
     average_signature = round(sum(signatures) / len(signatures), 3) if signatures else None
     transponder_silent = any(point["transponder"] == "off" for point in points)
     observability_index = average_signature if average_signature is not None else (
-        0.35 if stealth_mode or transponder_silent else 0.8
+        LOW_OBSERVABILITY_INDEX
+        if stealth_mode or transponder_silent
+        else NORMAL_OBSERVABILITY_INDEX
     )
     return {
         "stealth_mode": stealth_mode,
@@ -157,7 +163,8 @@ def _build_analytics(points: List[Dict[str, object]], stealth_mode: bool) -> Dic
     alert_flags = []
 
     if any(
-        float(point["speed_kts"]) > 450 and float(point["altitude_ft"]) < 10000
+        float(point["speed_kts"]) > HIGH_SPEED_THRESHOLD_KTS
+        and float(point["altitude_ft"]) < LOW_ALTITUDE_THRESHOLD_FT
         for point in points
     ):
         alert_flags.append("high_speed_low_altitude")
@@ -165,7 +172,7 @@ def _build_analytics(points: List[Dict[str, object]], stealth_mode: bool) -> Dic
         alert_flags.append("transponder_silent")
 
     visibility = _visibility_profile(points, stealth_mode)
-    if visibility["observability_index"] <= 0.35:
+    if visibility["observability_index"] <= LOW_OBSERVABILITY_INDEX:
         alert_flags.append("low_observability_profile")
 
     return {
