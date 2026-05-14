@@ -10,6 +10,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - Privacy-aware response caching with stealth request support
 - Optional web search via SerpAPI
 - Calculator tool (LLM Math Chain)
+- Flight/event intelligence analysis with filtering, search, and threat overlays
 - CLI loop for local use
 
 ### Production Features
@@ -137,9 +138,20 @@ kubectl apply -f deploy/kubernetes/deployment.yml
 
 - `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
+- `/v1/flight-analysis` - Authenticated JSON analysis endpoint for flight/event filtering, search, and overlays
 - `/v1/flights/history` - Store a historical aircraft movement point
 - `/v1/flights/timeline` - Build investigation-ready timeline layers across one or many aircraft
 - `/v1/flights/{aircraft_id}/replay` - Replay a historical track with optional sampling
+
+### Flight Analysis API
+
+Submit flight/event datasets for filtering, ranked search, and overlay generation:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"flights":[{"id":"F-001","callsign":"RAVEN1","altitude":4500,"squawk":"7700"}],"events":[],"filters":{"flagged_only":true}}' \
+  http://localhost:8000/v1/flight-analysis
+```
 
 ### Historical Flight Tracking API
 
