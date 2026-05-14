@@ -2,8 +2,8 @@
 """
 Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
-import os
 import json
+import os
 from typing import Any
 
 from dotenv import load_dotenv
@@ -64,7 +64,6 @@ def _build_tools(llm: Any) -> list[Any]:
         )
         return json.dumps(result, indent=2, sort_keys=True)
 
-    # Web search via SerpAPI (optional)
     serp_key = os.getenv("SERPAPI_API_KEY")
     if serp_key:
         serp = SerpAPIWrapper()
@@ -88,7 +87,6 @@ def _build_tools(llm: Any) -> list[Any]:
         )
     )
 
-    # Math tool (uses the LLM's math chain)
     llm_math = LLMMathChain.from_llm(llm=llm)
     tools.append(
         Tool(

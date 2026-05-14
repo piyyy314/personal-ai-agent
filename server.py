@@ -4,11 +4,11 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
-from functools import lru_cache
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
+from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -16,8 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
-from agent import create_agent
 from flight_analysis import analyze_flight_operations
+from flight_tracking import FlightHistoryStore, FlightObservation
 from health_server import start_health_server
 from monitoring import (
     audit_event,
@@ -37,6 +37,7 @@ load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
+flight_history = FlightHistoryStore()
 
 
 @asynccontextmanager
@@ -59,14 +60,14 @@ app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 
 @lru_cache(maxsize=1)
 def get_agent():
+    from agent import create_agent
+
     return create_agent()
 
-# ── Static files & radar dashboard ────────────────────────────────
+
 _static_dir = Path(__file__).parent / "static"
 _static_dir.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
-
-# ── Radar API router ───────────────────────────────────────────────
 app.include_router(radar_router)
 
 
@@ -102,6 +103,20 @@ class FlightAnalysisRequest(BaseModel):
     filters: Dict[str, Any] = Field(default_factory=dict)
     search_query: Optional[str] = None
     search_limit: int = Field(default=10, ge=1, le=100)
+
+
+class FlightObservationRequest(BaseModel):
+    aircraft_id: str = Field(..., description="Stable aircraft identifier or callsign.")
+    timestamp: datetime = Field(..., description="Observation timestamp in ISO-8601 format.")
+    latitude: float
+    longitude: float
+    altitude_ft: Optional[float] = None
+    groundspeed_kts: Optional[float] = None
+    heading_deg: Optional[float] = None
+    squawk: Optional[str] = None
+    event_type: str = Field(default="position", description="position, alert, handoff, etc.")
+    source: str = Field(default="manual", description="Data source for the observation.")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 def require_api_key(request: Request) -> None:
@@ -147,8 +162,7 @@ async def chat(
 
     start_time = timer()
     try:
-        reply = get_agent().invoke({"input": request.prompt})["output"]
-        result = agent.invoke(
+        result = get_agent().invoke(
             {
                 "input": request.prompt,
                 "stealth": request.stealth,
@@ -239,3 +253,82 @@ async def flight_analysis(
             status_code=400,
             detail=f"Flight analysis failed: {run_error.__class__.__name__}",
         ) from run_error
+
+
+@app.post("/v1/flights/history")
+async def record_flight_history(
+    request: FlightObservationRequest, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    result = flight_history.record(
+        FlightObservation(
+            aircraft_id=request.aircraft_id,
+            timestamp=request.timestamp,
+            latitude=request.latitude,
+            longitude=request.longitude,
+            altitude_ft=request.altitude_ft,
+            groundspeed_kts=request.groundspeed_kts,
+            heading_deg=request.heading_deg,
+            squawk=request.squawk,
+            event_type=request.event_type,
+            source=request.source,
+            metadata=request.metadata,
+        )
+    )
+    audit_event(
+        "flight_history_recorded",
+        {
+            "aircraft_id": request.aircraft_id,
+            "event_type": request.event_type,
+            "source": request.source,
+            "anomaly_count": len(result["anomalies"]),
+        },
+    )
+    for anomaly in result["anomalies"]:
+        record_security_event(f"flight_{anomaly['type']}")
+    return JSONResponse(content=result)
+
+
+@app.get("/v1/flights/timeline")
+async def get_flight_timeline(
+    aircraft_id: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    _: None = Depends(require_api_key),
+) -> JSONResponse:
+    timeline = flight_history.timeline(
+        aircraft_id=aircraft_id,
+        start_time=start_time,
+        end_time=end_time,
+    )
+    audit_event(
+        "flight_timeline_requested",
+        {
+            "aircraft_id": aircraft_id,
+            "event_count": timeline["event_count"],
+        },
+    )
+    return JSONResponse(content=timeline)
+
+
+@app.get("/v1/flights/{aircraft_id}/replay")
+async def replay_flight_history(
+    aircraft_id: str,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    interval_seconds: Optional[int] = None,
+    _: None = Depends(require_api_key),
+) -> JSONResponse:
+    replay = flight_history.replay(
+        aircraft_id=aircraft_id,
+        start_time=start_time,
+        end_time=end_time,
+        interval_seconds=interval_seconds,
+    )
+    audit_event(
+        "flight_replay_requested",
+        {
+            "aircraft_id": aircraft_id,
+            "frame_count": replay["frame_count"],
+        },
+    )
+    return JSONResponse(content=replay)
