@@ -97,7 +97,7 @@ class AircraftVisualizationTests(unittest.TestCase):
         self.assertIn("Stealth Module", html)
         self.assertIn("Security-Focused View", html)
         self.assertIn("name=\"stealth\"", html)
-        self.assertIn("avoid entering sensitive telemetry", html)
+        self.assertIn("avoid entering sensitive telemetry data", html)
 
 
 if __name__ == "__main__":

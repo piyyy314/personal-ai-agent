@@ -63,13 +63,11 @@ def energy_state(altitude_ft: float, speed_kts: float) -> str:
 def general_direction(heading_deg: float) -> str:
     if heading_deg < 45 or heading_deg >= 315:
         return "northbound"
-    if 45 <= heading_deg < 135:
+    if heading_deg < 135:
         return "eastbound"
-    if 135 <= heading_deg < 225:
+    if heading_deg < 225:
         return "southbound"
-    if 225 <= heading_deg < 315:
-        return "westbound"
-    return "northbound"
+    return "westbound"
 
 
 def build_aircraft_analysis(snapshot: AircraftSnapshot) -> Dict[str, object]:
@@ -390,7 +388,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
         </div>
         <button type="submit">Update Modules</button>
         <p class="controls-note">
-          warning: this view uses URL query parameters, so avoid entering sensitive telemetry on shared systems.
+          warning: this view uses URL query parameters, so avoid entering sensitive telemetry data on shared systems.
         </p>
       </form>
     </section>
