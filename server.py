@@ -4,6 +4,7 @@ FastAPI service for the personal AI agent with observability and basic auth.
 Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
+import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List, Literal, Optional
@@ -34,7 +35,26 @@ load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
-flight_data_service = FlightDataService(signing_key=os.getenv("FLIGHT_DATA_SIGNING_KEY"))
+MIN_SIGNING_KEY_LENGTH = 16
+
+
+def get_flight_data_signing_key() -> Optional[str]:
+    signing_key = os.getenv("FLIGHT_DATA_SIGNING_KEY")
+    if not signing_key:
+        warnings.warn(
+            "FLIGHT_DATA_SIGNING_KEY is not configured; flight data integrity hashes will use unsigned SHA-256 digests.",
+            stacklevel=2,
+        )
+        return None
+    if len(signing_key) < MIN_SIGNING_KEY_LENGTH:
+        warnings.warn(
+            f"FLIGHT_DATA_SIGNING_KEY is shorter than {MIN_SIGNING_KEY_LENGTH} characters; use a longer secret for stronger integrity protection.",
+            stacklevel=2,
+        )
+    return signing_key
+
+
+flight_data_service = FlightDataService(signing_key=get_flight_data_signing_key())
 
 
 @asynccontextmanager
