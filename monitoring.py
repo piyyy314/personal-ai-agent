@@ -36,6 +36,19 @@ SECURITY_EVENTS = Counter(
     "Security, compliance, or anomaly events.",
     ["event_type"],
 )
+CACHE_EVENTS = Counter(
+    "agent_cache_events_total",
+    "Privacy-aware cache activity by outcome and mode.",
+    ["outcome", "mode"],
+)
+STEALTH_REQUESTS = Counter(
+    "agent_stealth_requests_total",
+    "Total low-footprint stealth requests.",
+)
+CACHE_ENTRIES = Gauge(
+    "agent_cache_entries",
+    "Current number of cached responses kept in memory.",
+)
 SESSION_HEALTH = Gauge(
     "agent_session_status",
     "1 when the agent loop/API is running; 0 when stopped.",
@@ -127,6 +140,18 @@ def record_security_event(event_type: str) -> None:
     SECURITY_EVENTS.labels(event_type=event_type).inc()
 
 
+def record_cache_event(outcome: str, mode: str) -> None:
+    CACHE_EVENTS.labels(outcome=outcome, mode=mode).inc()
+
+
+def set_cache_entries(count: int) -> None:
+    CACHE_ENTRIES.set(max(0, count))
+
+
+def record_stealth_request() -> None:
+    STEALTH_REQUESTS.inc()
+
+
 SUSPICIOUS_PATTERNS = {
     "credential_probe": re.compile(r"(credential|password|secret|token)", re.IGNORECASE),
     "exfiltration": re.compile(r"(exfiltrat|leak|dump data)", re.IGNORECASE),
@@ -160,4 +185,3 @@ def metrics_response():
 
 def timer() -> float:
     return time.perf_counter()
-
