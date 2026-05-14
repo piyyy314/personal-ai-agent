@@ -223,6 +223,16 @@ const state = {
   threatsOnly:     false,
 };
 
+// ── XSS helpers ──────────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 // ── Leaflet map ──────────────────────────────────────────────────
 const map = L.map('map', {
   center: [20, 0],
@@ -448,7 +458,7 @@ function renderGeofences() {
       color, weight: 1.5, opacity: 0.7,
       fillColor: color, fillOpacity: 0.05,
       dashArray: '6,4',
-    }).bindTooltip(`<b>${gz.name}</b><br/>${gz.alert_level} Zone`, { sticky: true });
+    }).bindTooltip(`<b>${escapeHtml(gz.name)}</b><br/>${escapeHtml(gz.alert_level)} Zone`, { sticky: true });
     c.addTo(map);
     gfCircles[gz.zone_id] = c;
   });
@@ -542,8 +552,8 @@ function renderEventLog() {
     const t = e.timestamp ? e.timestamp.substr(11,8) : '';
     return `<div class="event-item">
       <span class="ev-time">${t}Z</span>
-      <span class="ev-severity ev-${e.severity}">[${e.severity}]</span>
-      <div class="ev-desc">${e.description}</div>
+      <span class="ev-severity ev-${escapeHtml(e.severity)}">[${escapeHtml(e.severity)}]</span>
+      <div class="ev-desc">${escapeHtml(e.description)}</div>
     </div>`;
   }).join('');
 }
@@ -575,8 +585,8 @@ function updateTicker() {
   const items = state.events.slice(0, 20).map(e => {
     const color = { HOSTILE:'#ff0044', SUSPECT:'#ff7700' }[e.severity] || '#00d4ff';
     return `<span class="ticker-event">
-      <span class="ticker-sev" style="background:${color};color:#fff">${e.severity}</span>
-      ${e.description}
+      <span class="ticker-sev" style="background:${color};color:#fff">${escapeHtml(e.severity)}</span>
+      ${escapeHtml(e.description)}
     </span> ◆ `;
   });
   el.innerHTML = items.join('') || '<span class="ticker-event" style="color:var(--text-dim)">No events — system nominal</span>';

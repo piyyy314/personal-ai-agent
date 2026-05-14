@@ -14,12 +14,13 @@ GET  /radar/geofences         – active geofence zones
 POST /radar/geofences         – create a new geofence
 GET  /radar/events            – recent alert/event log
 WS   /radar/ws                – real-time push stream (JSON frames @ ~1 Hz)
-GET  /dashboard               – serves the HTML ops-center dashboard
+GET  /radar/dashboard         – serves the HTML ops-center dashboard
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import math
 import os
@@ -34,6 +35,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field as PydanticField, field_validator
 
 # ---------------------------------------------------------------------------
 # Routing
@@ -338,7 +340,7 @@ async def _simulation_loop() -> None:
                 ac.heading = (ac.heading + random.randint(-15, 15)) % 360
 
             # Altitude changes
-            ac.altitude = max(500, min(50000, ac.altitude + ac.vertical_rate // 3600))
+            ac.altitude = max(500, min(50000, ac.altitude + ac.vertical_rate // 60))
             if random.random() < 0.02:
                 ac.vertical_rate = random.randint(-2000, 2000)
 
@@ -396,7 +398,8 @@ async def _simulation_loop() -> None:
             except Exception:
                 disconnected.append(ws)
         for ws in disconnected:
-            _ws_clients.remove(ws)
+            if ws in _ws_clients:
+                _ws_clients.remove(ws)
 
         elapsed = time.monotonic() - start
         await asyncio.sleep(max(0, 1.0 / UPDATE_HZ - elapsed))
@@ -469,14 +472,26 @@ def radar_startup() -> None:
 
 async def radar_startup_async() -> None:
     """Call from async startup to launch background task."""
-    global _sim_task
+    global _sim_task, _aircraft, _geofences, _events
+    # Idempotent: cancel any existing task and reset state before (re-)seeding
+    if _sim_task and not _sim_task.done():
+        _sim_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(_sim_task, return_exceptions=True)
+    _aircraft.clear()
+    _geofences.clear()
+    _events.clear()
     radar_startup()
     _sim_task = asyncio.create_task(_simulation_loop())
 
 
 async def radar_shutdown() -> None:
-    if _sim_task:
+    global _sim_task
+    if _sim_task and not _sim_task.done():
         _sim_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.gather(_sim_task, return_exceptions=True)
+    _sim_task = None
 
 
 # ---------------------------------------------------------------------------
@@ -514,8 +529,9 @@ async def get_aircraft(
 @router.get("/threats")
 async def get_threats() -> JSONResponse:
     """Return ranked threat assessments (SUSPECT and HOSTILE contacts)."""
+    aircraft_snapshot = list(_aircraft.values())
     threats = [
-        a for a in _aircraft.values()
+        a for a in aircraft_snapshot
         if a.threat_label in ("SUSPECT", "HOSTILE")
     ]
     threats.sort(key=lambda a: -a.threat_score)
@@ -539,16 +555,39 @@ async def get_geofences() -> JSONResponse:
     })
 
 
+_ALERT_LEVELS = {"INFO", "WARNING", "CRITICAL"}
+
+
+class GeofenceRequest(BaseModel):
+    name: str = PydanticField(
+        default="Custom Zone",
+        max_length=80,
+        pattern=r"^[\w\s\-\.]+$",
+    )
+    lat: float = PydanticField(..., ge=-90.0, le=90.0)
+    lon: float = PydanticField(..., ge=-180.0, le=180.0)
+    radius_nm: float = PydanticField(default=50.0, gt=0, le=2000.0)
+    alert_level: str = PydanticField(default="WARNING")
+
+    @field_validator("alert_level")
+    @classmethod
+    def validate_alert_level(cls, v: str) -> str:
+        upper = v.upper()
+        if upper not in _ALERT_LEVELS:
+            raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
+        return upper
+
+
 @router.post("/geofences")
-async def create_geofence(body: Dict[str, Any]) -> JSONResponse:
+async def create_geofence(body: GeofenceRequest) -> JSONResponse:
     """Create a new geofence zone."""
     gz = GeofenceZone(
-        zone_id=f"GF{random.randint(100,999)}",
-        name=body.get("name", "Custom Zone"),
-        lat=float(body["lat"]),
-        lon=float(body["lon"]),
-        radius_nm=float(body.get("radius_nm", 50)),
-        alert_level=body.get("alert_level", "WARNING"),
+        zone_id=f"GF{random.randint(100, 999)}",
+        name=body.name,
+        lat=body.lat,
+        lon=body.lon,
+        radius_nm=body.radius_nm,
+        alert_level=body.alert_level,
     )
     _geofences.append(gz)
     return JSONResponse(asdict(gz), status_code=201)
@@ -557,9 +596,11 @@ async def create_geofence(body: Dict[str, Any]) -> JSONResponse:
 @router.get("/events")
 async def get_events(limit: int = 50) -> JSONResponse:
     """Return recent alert/event log."""
+    returned = list(_events)[:limit]
     return JSONResponse({
-        "count": len(_events),
-        "events": list(_events)[:limit],
+        "total_count": len(_events),
+        "count": len(returned),
+        "events": returned,
     })
 
 
@@ -576,8 +617,8 @@ async def websocket_stream(ws: WebSocket) -> None:
     snapshot = {
         "type": "snapshot",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "aircraft": [ac.to_dict() for ac in _aircraft.values()],
-        "geofences": [asdict(g) for g in _geofences],
+        "aircraft": [ac.to_dict() for ac in list(_aircraft.values())],
+        "geofences": [asdict(g) for g in list(_geofences)],
         "analytics": _build_analytics(),
         "events": list(_events)[:50],
     }
