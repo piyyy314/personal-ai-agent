@@ -3,9 +3,11 @@
 Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
 import os
+import json
 from typing import Any
 
 from dotenv import load_dotenv
+from flight_analysis import analyze_flight_operations
 
 from monitoring import record_cache_event, record_stealth_request, set_cache_entries
 from performance import (
@@ -33,6 +35,36 @@ def _build_tools(llm: Any) -> list[Any]:
     """Build the reusable tool list for the hosted OpenAI-backed agent."""
     tools = []
 
+    def run_flight_analysis(payload: str) -> str:
+        """Analyze flight and event intelligence data from a JSON payload."""
+        error_message = (
+            "Invalid FlightIntel payload. Expected a JSON object with: "
+            "flights (list), optional events (list), optional filters (object), "
+            "optional search_query (string), and optional search_limit (integer)."
+        )
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return error_message
+
+        if not isinstance(parsed, dict):
+            return error_message
+
+        try:
+            search_limit = int(parsed.get("search_limit") or 10)
+        except (TypeError, ValueError):
+            return error_message
+
+        result = analyze_flight_operations(
+            flights=parsed.get("flights") or [],
+            events=parsed.get("events") or [],
+            filters=parsed.get("filters") or {},
+            search_query=parsed.get("search_query"),
+            search_limit=search_limit,
+        )
+        return json.dumps(result, indent=2, sort_keys=True)
+
+    # Web search via SerpAPI (optional)
     serp_key = os.getenv("SERPAPI_API_KEY")
     if serp_key:
         serp = SerpAPIWrapper()
@@ -44,6 +76,19 @@ def _build_tools(llm: Any) -> list[Any]:
             )
         )
 
+    tools.append(
+        Tool(
+            name="FlightIntel",
+            func=run_flight_analysis,
+            description=(
+                "Analyze flight and event datasets for advanced filtering, search, "
+                "threat signals, and stealth overlays. Input must be JSON with "
+                "flights, optional events, optional filters, and optional search_query."
+            ),
+        )
+    )
+
+    # Math tool (uses the LLM's math chain)
     llm_math = LLMMathChain.from_llm(llm=llm)
     tools.append(
         Tool(
