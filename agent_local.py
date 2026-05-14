@@ -55,13 +55,31 @@ def create_agent():
 
     def run_flight_analysis(payload: str) -> str:
         """Analyze flight and event intelligence data from a JSON payload."""
-        parsed = json.loads(payload)
+        required_format_message = (
+            "Invalid input for FlightIntel. Expected a JSON object like "
+            '{"flights": [], "events": [], "filters": {}, '
+            '"search_query": "optional", "search_limit": 10}. '
+            '"search_limit" must be numeric.'
+        )
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            return required_format_message
+
+        if not isinstance(parsed, dict):
+            return required_format_message
+
+        try:
+            search_limit = int(parsed.get("search_limit") or 10)
+        except (TypeError, ValueError):
+            return required_format_message
+
         result = analyze_flight_operations(
             flights=parsed.get("flights") or [],
             events=parsed.get("events") or [],
             filters=parsed.get("filters") or {},
             search_query=parsed.get("search_query"),
-            search_limit=int(parsed.get("search_limit") or 10),
+            search_limit=search_limit,
         )
         return json.dumps(result, indent=2, sort_keys=True)
     
