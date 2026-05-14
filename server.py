@@ -5,10 +5,12 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from dotenv import load_dotenv
@@ -25,6 +27,7 @@ from monitoring import (
     timer,
 )
 from prometheus_client import CONTENT_TYPE_LATEST
+from radar_api import router as radar_router, radar_startup_async, radar_shutdown
 
 
 load_dotenv()
@@ -37,16 +40,33 @@ AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 async def lifespan(app: FastAPI):
     configure_logging()
     health_port = int(os.getenv("HEALTH_PORT", "8080"))
-    start_health_server(port=health_port)
+    health_server = start_health_server(port=health_port)
     set_session_status(True)
     audit_event("startup", {"mode": "api"})
+    await radar_startup_async()
     yield
     set_session_status(False)
     audit_event("shutdown", {"mode": "api"})
+    await radar_shutdown()
+    health_server.shutdown()
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 agent = create_agent()
+
+# ── Static files & radar dashboard ────────────────────────────────
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# ── Radar API router ───────────────────────────────────────────────
+app.include_router(radar_router)
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard_redirect() -> RedirectResponse:
+    """Redirect top-level /dashboard to the radar ops-center dashboard."""
+    return RedirectResponse(url="/radar/dashboard")
 
 
 class ChatRequest(BaseModel):
