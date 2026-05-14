@@ -1,38 +1,38 @@
 #!/usr/bin/env python3
 """
-Builds a LangChain agent with memory and a couple of tools.
-Adjust LLM and tools here to match your privacy / capability needs.
+Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
 import os
+from typing import Any
+
 from dotenv import load_dotenv
+
+from monitoring import record_cache_event, record_stealth_request, set_cache_entries
+from performance import (
+    PerformanceTunedAgent,
+    PrivacyAwareResponseCache,
+    get_validated_env_int,
+)
 
 load_dotenv()
 
 try:
     # LangChain imports
-    from langchain_openai import OpenAI
-    from langchain.memory import ConversationBufferMemory
-    from langchain.agents import initialize_agent, Tool, AgentType
+    from langchain.agents import AgentType, Tool, initialize_agent
     from langchain.chains import LLMMathChain
+    from langchain.memory import ConversationBufferWindowMemory
     from langchain_community.utilities import SerpAPIWrapper
+    from langchain_openai import OpenAI
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements.txt") from e
 
-def create_agent():
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        raise RuntimeError("OPENAI_API_KEY not set in environment (see .env.example)")
+DEFAULT_MEMORY_WINDOW_TURNS = 6
 
-    # LLM: you can swap this for a local LLM wrapper (LlamaCPP, Mistral local, etc.)
-    llm = OpenAI(temperature=0, max_tokens=800)
 
-    # Memory: short-term conversation buffer
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-
-    # Tools
+def _build_tools(llm: Any) -> list[Any]:
+    """Build the reusable tool list for the hosted OpenAI-backed agent."""
     tools = []
 
-    # Web search via SerpAPI (optional)
     serp_key = os.getenv("SERPAPI_API_KEY")
     if serp_key:
         serp = SerpAPIWrapper()
@@ -40,25 +40,59 @@ def create_agent():
             Tool(
                 name="Search",
                 func=serp.run,
-                description="Useful for when you need to look up current web results."
+                description="Useful for when you need to look up current web results.",
             )
         )
 
-    # Math tool (uses the LLM's math chain)
     llm_math = LLMMathChain.from_llm(llm=llm)
     tools.append(
         Tool(
             name="Calculator",
             func=llm_math.run,
-            description="Performs multi-step math calculations."
+            description="Performs multi-step math calculations.",
         )
     )
+    return tools
 
-    agent = initialize_agent(
+
+def _build_agent_executor(memory_enabled: bool) -> Any:
+    """Construct an agent executor with optional bounded conversation memory."""
+    llm = OpenAI(temperature=0, max_tokens=800)
+    tools = _build_tools(llm)
+    memory = None
+    if memory_enabled:
+        memory = ConversationBufferWindowMemory(
+            k=get_validated_env_int(
+                "AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW_TURNS, minimum=1
+            ),
+            memory_key="chat_history",
+            return_messages=True,
+        )
+
+    return initialize_agent(
         tools,
         llm,
         agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION,
         memory=memory,
         verbose=False,
     )
-    return agent
+
+
+def create_agent() -> Any:
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise RuntimeError("OPENAI_API_KEY not set in environment (see .env.example)")
+
+    response_cache = PrivacyAwareResponseCache(
+        max_entries=get_validated_env_int("AGENT_CACHE_MAX_ENTRIES", 128),
+        ttl_seconds=get_validated_env_int("AGENT_CACHE_TTL_SECONDS", 300),
+        on_event=record_cache_event,
+        on_size_change=set_cache_entries,
+    )
+    return PerformanceTunedAgent(
+        primary_agent=_build_agent_executor(memory_enabled=True),
+        stealth_agent_factory=lambda: _build_agent_executor(memory_enabled=False),
+        response_cache=response_cache,
+        on_cache_event=record_cache_event,
+        on_stealth_request=record_stealth_request,
+    )
