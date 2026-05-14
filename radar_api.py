@@ -472,7 +472,10 @@ def radar_startup() -> None:
 
 async def radar_startup_async() -> None:
     """Call from async startup to launch background task."""
-    global _sim_task, _aircraft, _geofences, _events
+    global _sim_task
+    global _aircraft
+    global _geofences
+    global _events
     # Idempotent: cancel any existing task and reset state before (re-)seeding
     if _sim_task and not _sim_task.done():
         _sim_task.cancel()
@@ -562,7 +565,7 @@ class GeofenceRequest(BaseModel):
     name: str = PydanticField(
         default="Custom Zone",
         max_length=80,
-        pattern=r"^[\w\s\-\.]+$",
+        pattern=r"^[\w\s.\-]+$",
     )
     lat: float = PydanticField(..., ge=-90.0, le=90.0)
     lon: float = PydanticField(..., ge=-180.0, le=180.0)

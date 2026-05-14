@@ -552,7 +552,7 @@ function renderEventLog() {
     const t = e.timestamp ? e.timestamp.substr(11,8) : '';
     return `<div class="event-item">
       <span class="ev-time">${t}Z</span>
-      <span class="ev-severity ev-${escapeHtml(e.severity)}">[${escapeHtml(e.severity)}]</span>
+      <span class="ev-severity ev-${['HOSTILE','SUSPECT','MONITOR','CLEAR','WARNING','INFO'].includes(e.severity) ? e.severity : 'INFO'}">[${escapeHtml(e.severity)}]</span>
       <div class="ev-desc">${escapeHtml(e.description)}</div>
     </div>`;
   }).join('');
