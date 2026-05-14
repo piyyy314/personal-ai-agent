@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from html import escape
 from typing import Dict, List
 
-MAX_ALTITUDE_FT = 45_000
-MAX_SPEED_KTS = 900
+OPERATIONAL_CEILING_FT = 45_000
+MAX_OPERATIONAL_SPEED_KTS = 900
 
 
 @dataclass(frozen=True)
@@ -125,11 +125,12 @@ def clamped_ratio(value: float, maximum: float) -> float:
 
 def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
     analysis = build_aircraft_analysis(snapshot)
-    altitude_ratio = clamped_ratio(snapshot.altitude_ft, MAX_ALTITUDE_FT)
-    speed_ratio = clamped_ratio(snapshot.speed_kts, MAX_SPEED_KTS)
+    altitude_ratio = clamped_ratio(snapshot.altitude_ft, OPERATIONAL_CEILING_FT)
+    speed_ratio = clamped_ratio(snapshot.speed_kts, MAX_OPERATIONAL_SPEED_KTS)
     heading_deg = f'{analysis["basic"]["heading_deg"]:.1f}'
     stealth_text = "ENABLED" if snapshot.stealth_enabled else "DISABLED"
     stealth_class = "on" if snapshot.stealth_enabled else "off"
+    checked_attr = " checked" if snapshot.stealth_enabled else ""
     security_flags = analysis["security"]["flags"] or ["No immediate security advisories."]
     recommendations = analysis["security"]["recommendations"]
 
@@ -183,6 +184,9 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
       grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
       align-items: end;
+    }}
+    .controls form {{
+      display: contents;
     }}
     .controls label {{
       display: block;
@@ -337,7 +341,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
 <body>
   <div class="page grid">
     <section class="controls">
-      <form method="get" style="display: contents;">
+      <form method="get">
         <div>
           <label for="altitude">Altitude (ft)</label>
           <input id="altitude" name="altitude" type="number" min="0" value="{snapshot.altitude_ft:.1f}">
@@ -352,7 +356,7 @@ def render_aircraft_visualization(snapshot: AircraftSnapshot) -> str:
         </div>
         <div>
           <label for="stealth">Stealth Enabled</label>
-          <input id="stealth" name="stealth" type="checkbox" value="true" {"checked" if snapshot.stealth_enabled else ""}>
+          <input id="stealth" name="stealth" type="checkbox" value="true"{checked_attr}>
         </div>
         <button type="submit">Update Modules</button>
       </form>
