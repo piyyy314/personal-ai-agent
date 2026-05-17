@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>ATLAS RADAR — Global Air Surveillance</title>
+
+<!-- Leaflet map -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+/* ── Reset & base ─────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg0:#060b14;--bg1:#0c1526;--bg2:#101d33;--bg3:#152243;
+  --border:#1e3460;--accent:#00d4ff;--accent2:#00ff9d;
+  --warn:#f0a500;--danger:#ff3a3a;--hostile:#ff0044;
+  --suspect:#ff7700;--monitor:#ffe500;--clear:#00ff9d;
+  --text:#c8deff;--text-dim:#5a7aaa;--font:'Courier New',monospace;
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var(--text);font-family:var(--font);font-size:12px}
+
+/* ── Layout grid ──────────────────────────────────────────────────── */
+#app{display:grid;grid-template-rows:44px 1fr 110px;grid-template-columns:260px 1fr 270px;height:100vh;gap:2px;background:var(--border)}
+
+#header{grid-column:1/-1;background:var(--bg1);display:flex;align-items:center;padding:0 14px;gap:18px;border-bottom:1px solid var(--border)}
+#left-panel{background:var(--bg1);overflow-y:auto;display:flex;flex-direction:column;gap:0}
+#map-container{position:relative;background:#000}
+#right-panel{background:var(--bg1);overflow-y:auto;display:flex;flex-direction:column;gap:0}
+#bottom-bar{grid-column:1/-1;background:var(--bg1);display:flex;align-items:center;overflow:hidden;padding:0 8px;gap:6px;border-top:1px solid var(--border)}
+
+/* ── Header ───────────────────────────────────────────────────────── */
+.logo{font-size:16px;font-weight:700;color:var(--accent);letter-spacing:3px;text-transform:uppercase}
+.header-stat{display:flex;flex-direction:column;align-items:center;padding:0 10px;border-left:1px solid var(--border)}
+.header-stat .val{font-size:18px;font-weight:700;color:var(--accent2)}
+.header-stat .lbl{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px}
+.clock{margin-left:auto;font-size:13px;color:var(--accent);letter-spacing:2px}
+.sys-status{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-dim)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent2);animation:blink 1.4s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── Panel sections ───────────────────────────────────────────────── */
+.section-hdr{padding:7px 10px;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg2)}
+.section-hdr .badge{font-size:9px;background:var(--accent);color:#000;padding:1px 6px;border-radius:2px}
+
+/* ── Threat list ──────────────────────────────────────────────────── */
+#threat-list{flex:1;overflow-y:auto}
+.threat-item{padding:6px 10px;border-bottom:1px solid var(--bg3);cursor:pointer;transition:background .15s}
+.threat-item:hover{background:var(--bg3)}
+.threat-item .ti-top{display:flex;justify-content:space-between;align-items:center}
+.ti-callsign{font-weight:700;font-size:12px;color:var(--text)}
+.ti-score{font-size:10px;font-weight:700;padding:1px 5px;border-radius:2px}
+.HOSTILE{background:var(--hostile);color:#fff}
+.SUSPECT{background:var(--suspect);color:#000}
+.MONITOR{background:var(--monitor);color:#000}
+.CLEAR{background:var(--clear);color:#000}
+.threat-item .ti-meta{font-size:9px;color:var(--text-dim);margin-top:2px}
+.threat-item .ti-anomalies{font-size:9px;color:var(--warn);margin-top:2px}
+
+/* ── Analytics ────────────────────────────────────────────────────── */
+#analytics-panel{padding:8px 10px}
+.analytic-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bg3);font-size:11px}
+.analytic-row .ar-val{color:var(--accent2);font-weight:700}
+.bar-chart{margin-top:8px}
+.bar-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:9px}
+.bar-row .br-lbl{width:70px;color:var(--text-dim);text-align:right;flex-shrink:0}
+.bar-track{flex:1;height:10px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .6s}
+.bar-row .br-num{width:28px;text-align:right;color:var(--text)}
+
+/* ── Events log ───────────────────────────────────────────────────── */
+#event-log{flex:1;overflow-y:auto}
+.event-item{padding:5px 10px;border-bottom:1px solid var(--bg3);font-size:10px}
+.event-item .ev-time{color:var(--text-dim)}
+.event-item .ev-severity{font-weight:700;margin-left:4px}
+.ev-HOSTILE{color:var(--hostile)}
+.ev-SUSPECT{color:var(--suspect)}
+.ev-INFO{color:var(--accent)}
+.event-item .ev-desc{color:var(--text);margin-top:1px}
+
+/* ── Aircraft table ───────────────────────────────────────────────── */
+#aircraft-table-wrap{flex:1;overflow-y:auto}
+table{width:100%;border-collapse:collapse;font-size:10px}
+thead th{padding:4px 6px;text-align:left;color:var(--text-dim);border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);text-transform:uppercase;font-size:9px;letter-spacing:1px}
+tbody tr{border-bottom:1px solid var(--bg3);cursor:pointer;transition:background .1s}
+tbody tr:hover{background:var(--bg3)}
+tbody td{padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td-callsign{font-weight:700;color:var(--text);max-width:70px}
+.td-type{color:var(--text-dim)}
+.td-alt,.td-spd{color:var(--accent)}
+.td-sq{font-family:monospace;color:var(--warn)}
+.td-sig{font-size:9px;padding:1px 4px;border-radius:2px}
+.sig-stealth{background:#3d0070;color:#df80ff}
+.sig-adsb{background:#003d1a;color:var(--accent2)}
+.sig-mlat{background:#002b3d;color:var(--accent)}
+.sig-radar{background:#2e2000;color:var(--warn)}
+
+/* ── Map overlays ─────────────────────────────────────────────────── */
+#map{width:100%;height:100%}
+#radar-canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:500}
+#map-controls{position:absolute;bottom:10px;right:10px;z-index:600;display:flex;flex-direction:column;gap:4px}
+.mc-btn{background:var(--bg2);border:1px solid var(--border);color:var(--accent);padding:5px 10px;cursor:pointer;font-family:var(--font);font-size:10px;letter-spacing:1px;transition:background .15s}
+.mc-btn:hover{background:var(--bg3);color:var(--accent2)}
+.mc-btn.active{background:var(--accent);color:#000}
+
+/* ── Bottom event ticker ──────────────────────────────────────────── */
+#ticker{flex:1;overflow:hidden;position:relative;height:100%}
+.ticker-inner{display:flex;gap:20px;height:100%;align-items:center;white-space:nowrap;animation:scroll-ticker 40s linear infinite}
+@keyframes scroll-ticker{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+.ticker-event{font-size:10px;color:var(--text);display:inline-flex;gap:6px;align-items:center}
+.ticker-sev{font-weight:700;font-size:9px;padding:1px 5px;border-radius:2px}
+
+/* ── Tooltip ──────────────────────────────────────────────────────── */
+#tooltip{display:none;position:absolute;z-index:700;background:var(--bg2);border:1px solid var(--accent);padding:10px;min-width:220px;font-size:11px;pointer-events:none}
+#tooltip h3{color:var(--accent);font-size:12px;margin-bottom:6px;letter-spacing:1px}
+#tooltip table{width:100%}
+#tooltip table td:first-child{color:var(--text-dim);width:90px}
+#tooltip table td:last-child{color:var(--text);text-align:right}
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg1)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── Leaflet icon reset ───────────────────────────────────────────── */
+.leaflet-marker-icon,.leaflet-marker-shadow{background:transparent;border:none}
+
+/* ── Responsive ───────────────────────────────────────────────────── */
+@media(max-width:900px){
+  #app{grid-template-columns:1fr;grid-template-rows:44px 1fr 200px 200px 80px}
+  #left-panel,#right-panel{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ════════ HEADER ════════ -->
+  <div id="header">
+    <div class="logo">▶ ATLAS RADAR</div>
+    <div class="sys-status"><span class="dot"></span> LIVE</div>
+    <div class="header-stat"><span class="val" id="hdr-total">—</span><span class="lbl">Contacts</span></div>
+    <div class="header-stat"><span class="val" id="hdr-hostile" style="color:var(--hostile)">—</span><span class="lbl">Hostile</span></div>
+    <div class="header-stat"><span class="val" id="hdr-suspect" style="color:var(--suspect)">—</span><span class="lbl">Suspect</span></div>
+    <div class="header-stat"><span class="val" id="hdr-stealth" style="color:#df80ff">—</span><span class="lbl">Stealth</span></div>
+    <div class="header-stat"><span class="val" id="hdr-gf" style="color:var(--warn)">—</span><span class="lbl">GF Alerts</span></div>
+    <div class="header-stat"><span class="val" id="hdr-emerg" style="color:var(--danger)">—</span><span class="lbl">Emergency</span></div>
+    <div class="clock" id="clock">00:00:00 UTC</div>
+  </div>
+
+  <!-- ════════ LEFT PANEL ════════ -->
+  <div id="left-panel">
+    <div class="section-hdr">Threat Board <span class="badge" id="threat-count">0</span></div>
+    <div id="threat-list"></div>
+
+    <div class="section-hdr" style="margin-top:auto">Analytics</div>
+    <div id="analytics-panel">
+      <div class="analytic-row"><span>Tracked</span><span class="ar-val" id="an-total">—</span></div>
+      <div class="analytic-row"><span>Avg Altitude</span><span class="ar-val" id="an-alt">—</span></div>
+      <div class="analytic-row"><span>Avg Speed</span><span class="ar-val" id="an-spd">—</span></div>
+      <div class="analytic-row"><span>Stealth Contacts</span><span class="ar-val" id="an-stealth" style="color:#df80ff">—</span></div>
+      <div class="analytic-row"><span>Emergency Squawks</span><span class="ar-val" id="an-emerg" style="color:var(--danger)">—</span></div>
+
+      <div class="bar-chart" id="origin-bars"></div>
+      <div class="bar-chart" id="threat-bars" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- ════════ MAP ════════ -->
+  <div id="map-container">
+    <div id="map"></div>
+    <canvas id="radar-canvas"></canvas>
+    <div id="map-controls">
+      <button class="mc-btn active" id="btn-tracks" onclick="toggleTracks()">◉ Tracks</button>
+      <button class="mc-btn active" id="btn-labels" onclick="toggleLabels()">◎ Labels</button>
+      <button class="mc-btn" id="btn-geofence" onclick="toggleGeofences()">⬡ GeoFences</button>
+      <button class="mc-btn" id="btn-heatmap" onclick="toggleHeatmap()">◈ Density</button>
+      <button class="mc-btn" id="btn-threats-only" onclick="toggleThreatsOnly()">⚠ Threats</button>
+    </div>
+    <div id="tooltip"></div>
+  </div>
+
+  <!-- ════════ RIGHT PANEL ════════ -->
+  <div id="right-panel">
+    <div class="section-hdr">Event Log <span class="badge" id="event-count">0</span></div>
+    <div id="event-log"></div>
+
+    <div class="section-hdr">Live Contact Table</div>
+    <div id="aircraft-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Call</th><th>Type</th><th>Alt</th><th>Spd</th><th>Sq</th><th>Sig</th><th>Thr</th>
+          </tr>
+        </thead>
+        <tbody id="ac-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════════ BOTTOM BAR ════════ -->
+  <div id="bottom-bar">
+    <div style="font-size:9px;color:var(--text-dim);letter-spacing:2px;white-space:nowrap">EVENT FEED ▶</div>
+    <div id="ticker"><div class="ticker-inner" id="ticker-inner"></div></div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   ATLAS RADAR — Client Script
+   ══════════════════════════════════════════════════════════════════ */
+
+// ── State ────────────────────────────────────────────────────────
+const state = {
+  aircraft:   {},   // icao → object
+  geofences:  [],
+  events:     [],
+  analytics:  {},
+  showTracks:      true,
+  showLabels:      true,
+  showGeofences:   false,
+  showHeatmap:     false,
+  threatsOnly:     false,
+};
+
+// ── XSS helpers ──────────────────────────────────────────────────
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+// ── Leaflet map ──────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [20, 0],
+  zoom: 3,
+  zoomControl: false,
+  attributionControl: false,
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 18,
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+// ── Marker pool ──────────────────────────────────────────────────
+const markers   = {};  // icao → L.marker
+const trackLines = {}; // icao → L.polyline
+const gfCircles  = {}; // zone_id → L.circle
+
+// ── Radar canvas sweep ───────────────────────────────────────────
+const canvas = document.getElementById('radar-canvas');
+const ctx    = canvas.getContext('2d');
+let sweepAngle = 0;
+let radarCenter = { x: 0, y: 0 };
+
+function resizeCanvas() {
+  const mc = document.getElementById('map-container');
+  canvas.width  = mc.offsetWidth;
+  canvas.height = mc.offsetHeight;
+  radarCenter = { x: canvas.width / 2, y: canvas.height / 2 };
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function drawRadarSweep() {
+  const { x, y } = radarCenter;
+  const radius = Math.max(canvas.width, canvas.height) * 0.42;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Concentric range rings
+  const ringCount = 4;
+  for (let i = 1; i <= ringCount; i++) {
+    const r = (radius / ringCount) * i;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,212,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Cross-hair lines
+  ctx.strokeStyle = 'rgba(0,212,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x, y - radius); ctx.lineTo(x, y + radius); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x - radius, y); ctx.lineTo(x + radius, y); ctx.stroke();
+
+  // Sweep gradient
+  const grad = ctx.createConicalGradient
+    ? ctx.createConicalGradient(sweepAngle, x, y)
+    : null;
+
+  // Sweep arc (manual because conical gradient not universally supported)
+  const arcLen = Math.PI / 2.5;
+  const grad2 = ctx.createLinearGradient(x, y, x + radius, y);
+  grad2.addColorStop(0, 'rgba(0,212,255,0.0)');
+  grad2.addColorStop(1, 'rgba(0,212,255,0.18)');
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(sweepAngle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, radius, 0, arcLen);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,212,255,0.07)';
+  ctx.fill();
+  // Leading edge
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(radius * Math.cos(arcLen), radius * Math.sin(arcLen));
+  ctx.strokeStyle = 'rgba(0,212,255,0.55)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  sweepAngle += 0.018;
+  if (sweepAngle > Math.PI * 2) sweepAngle -= Math.PI * 2;
+  requestAnimationFrame(drawRadarSweep);
+}
+drawRadarSweep();
+
+// ── Aircraft icon factory ─────────────────────────────────────────
+function acIcon(ac) {
+  const color = threatColor(ac.threat_label);
+  const hdg   = ac.heading;
+  const size  = ac.signature === 'stealth' ? 10 : 12;
+  const pulse = ac.threat_label === 'HOSTILE' ? `
+    <circle cx="12" cy="12" r="14" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.4">
+      <animate attributeName="r" values="14;22;14" dur="1.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.4;0;0.4" dur="1.2s" repeatCount="indefinite"/>
+    </circle>` : '';
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    ${pulse}
+    <g transform="rotate(${hdg},12,12)">
+      <polygon points="12,2 9,18 12,15 15,18" fill="${color}" stroke="#000" stroke-width="0.8" opacity="${ac.transponder_on ? 1 : 0.5}"/>
+    </g>
+    ${ac.signature === 'stealth' ? '<circle cx="12" cy="12" r="5" fill="none" stroke="#df80ff" stroke-width="1" stroke-dasharray="2,2"/>' : ''}
+  </svg>`;
+
+  return L.divIcon({
+    html: svg,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -12],
+    className: '',
+  });
+}
+
+function threatColor(label) {
+  return { HOSTILE: '#ff0044', SUSPECT: '#ff7700', MONITOR: '#ffe500', CLEAR: '#00ff9d' }[label] || '#ccc';
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+function showTooltip(ac, x, y) {
+  const vRate = ac.vertical_rate > 0 ? `↑ ${ac.vertical_rate}` : ac.vertical_rate < 0 ? `↓ ${Math.abs(ac.vertical_rate)}` : '→ 0';
+  tooltip.innerHTML = `
+    <h3>${ac.callsign} <span style="font-size:9px;color:var(--text-dim)">(${ac.icao})</span></h3>
+    <table>
+      <tr><td>Type</td><td>${ac.type}</td></tr>
+      <tr><td>Origin</td><td>${ac.origin} / ${ac.airline}</td></tr>
+      <tr><td>Position</td><td>${ac.lat.toFixed(3)}°, ${ac.lon.toFixed(3)}°</td></tr>
+      <tr><td>Altitude</td><td>${ac.altitude.toLocaleString()} ft</td></tr>
+      <tr><td>Speed</td><td>${ac.speed} kts  ${vRate} fpm</td></tr>
+      <tr><td>Heading</td><td>${ac.heading}°</td></tr>
+      <tr><td>Squawk</td><td><b style="color:${['7500','7600','7700'].includes(ac.squawk)?'#ff3a3a':'inherit'}">${ac.squawk}</b></td></tr>
+      <tr><td>Signature</td><td>${ac.signature.toUpperCase()}</td></tr>
+      <tr><td>Transponder</td><td>${ac.transponder_on ? '✔ ON' : '<b style="color:#ff3a3a">✘ OFF</b>'}</td></tr>
+      <tr><td>Threat</td><td><b style="color:${threatColor(ac.threat_label)}">${ac.threat_label} (${(ac.threat_score*100).toFixed(0)}%)</b></td></tr>
+      ${ac.anomalies && ac.anomalies.length ? `<tr><td>Anomalies</td><td style="color:#f0a500">${ac.anomalies.join(', ')}</td></tr>` : ''}
+    </table>`;
+  tooltip.style.display = 'block';
+
+  // Position tooltip near click but keep in view
+  const mc = document.getElementById('map-container');
+  const mw = mc.offsetWidth, mh = mc.offsetHeight;
+  let tx = x + 15, ty = y - 10;
+  if (tx + 240 > mw) tx = x - 240;
+  if (ty + 200 > mh) ty = y - 200;
+  tooltip.style.left = tx + 'px';
+  tooltip.style.top  = ty + 'px';
+}
+map.on('click', () => { tooltip.style.display = 'none'; });
+
+// ── Marker update ─────────────────────────────────────────────────
+function upsertMarker(ac) {
+  if (state.threatsOnly && !['HOSTILE','SUSPECT'].includes(ac.threat_label)) {
+    removeMarker(ac.icao);
+    return;
+  }
+
+  if (markers[ac.icao]) {
+    markers[ac.icao].setLatLng([ac.lat, ac.lon]);
+    markers[ac.icao].setIcon(acIcon(ac));
+  } else {
+    const m = L.marker([ac.lat, ac.lon], { icon: acIcon(ac), zIndexOffset: Math.floor(ac.threat_score * 1000) });
+    m.on('click', e => {
+      const pt = map.latLngToContainerPoint(e.latlng);
+      showTooltip(ac, pt.x, pt.y);
+      L.DomEvent.stopPropagation(e);
+    });
+    m.addTo(map);
+    markers[ac.icao] = m;
+  }
+
+  // Label
+  if (state.showLabels) {
+    markers[ac.icao].bindTooltip(
+      `<span style="font-size:9px;color:${threatColor(ac.threat_label)};background:rgba(6,11,20,.85);padding:1px 3px">${ac.callsign}</span>`,
+      { permanent: true, direction: 'right', className: 'ac-label', offset: [6, 0] }
+    );
+  } else {
+    markers[ac.icao].unbindTooltip();
+  }
+
+  // Track line
+  if (state.showTracks && ac.track && ac.track.length > 1) {
+    if (trackLines[ac.icao]) {
+      trackLines[ac.icao].setLatLngs(ac.track);
+    } else {
+      const color = threatColor(ac.threat_label);
+      const line = L.polyline(ac.track, {
+        color, weight: 1.2, opacity: 0.55, dashArray: ac.signature === 'stealth' ? '3,5' : null
+      }).addTo(map);
+      trackLines[ac.icao] = line;
+    }
+  } else if (trackLines[ac.icao]) {
+    trackLines[ac.icao].remove();
+    delete trackLines[ac.icao];
+  }
+}
+
+function removeMarker(icao) {
+  if (markers[icao])    { markers[icao].remove(); delete markers[icao]; }
+  if (trackLines[icao]) { trackLines[icao].remove(); delete trackLines[icao]; }
+}
+
+// ── Geofence circles ──────────────────────────────────────────────
+function renderGeofences() {
+  Object.values(gfCircles).forEach(c => c.remove());
+  Object.keys(gfCircles).forEach(k => delete gfCircles[k]);
+
+  if (!state.showGeofences) return;
+
+  state.geofences.forEach(gz => {
+    if (!gz.active) return;
+    const colorMap = { CRITICAL: '#ff0044', WARNING: '#f0a500', INFO: '#00d4ff' };
+    const color = colorMap[gz.alert_level] || '#ccc';
+    const c = L.circle([gz.lat, gz.lon], {
+      radius: gz.radius_nm * 1852,  // nm → metres
+      color, weight: 1.5, opacity: 0.7,
+      fillColor: color, fillOpacity: 0.05,
+      dashArray: '6,4',
+    }).bindTooltip(`<b>${escapeHtml(gz.name)}</b><br/>${escapeHtml(gz.alert_level)} Zone`, { sticky: true });
+    c.addTo(map);
+    gfCircles[gz.zone_id] = c;
+  });
+}
+
+// ── UI toggles ────────────────────────────────────────────────────
+function toggleTracks()    { state.showTracks    = !state.showTracks;    document.getElementById('btn-tracks').classList.toggle('active',state.showTracks); rerenderAll(); }
+function toggleLabels()    { state.showLabels    = !state.showLabels;    document.getElementById('btn-labels').classList.toggle('active',state.showLabels); rerenderAll(); }
+function toggleGeofences() { state.showGeofences = !state.showGeofences; document.getElementById('btn-geofence').classList.toggle('active',state.showGeofences); renderGeofences(); }
+function toggleHeatmap()   { state.showHeatmap   = !state.showHeatmap;   document.getElementById('btn-heatmap').classList.toggle('active',state.showHeatmap); /* future */ }
+function toggleThreatsOnly(){ state.threatsOnly  = !state.threatsOnly;   document.getElementById('btn-threats-only').classList.toggle('active',state.threatsOnly); rerenderAll(); }
+
+function rerenderAll() {
+  Object.values(state.aircraft).forEach(ac => upsertMarker(ac));
+}
+
+// ── Left panel — threat list ──────────────────────────────────────
+function renderThreatList() {
+  const threats = Object.values(state.aircraft)
+    .filter(a => ['HOSTILE','SUSPECT','MONITOR'].includes(a.threat_label))
+    .sort((a,b) => b.threat_score - a.threat_score)
+    .slice(0, 40);
+
+  document.getElementById('threat-count').textContent = threats.length;
+  const el = document.getElementById('threat-list');
+  el.innerHTML = threats.map(a => `
+    <div class="threat-item" onclick="flyTo('${a.icao}')">
+      <div class="ti-top">
+        <span class="ti-callsign">${a.callsign}</span>
+        <span class="ti-score ${a.threat_label}">${a.threat_label} ${(a.threat_score*100).toFixed(0)}%</span>
+      </div>
+      <div class="ti-meta">${a.type} · ${a.origin} · FL${Math.round(a.altitude/100)} · ${a.speed}kts · hdg ${a.heading}°</div>
+      ${a.anomalies && a.anomalies.length ? `<div class="ti-anomalies">⚠ ${a.anomalies.join(' · ')}</div>` : ''}
+    </div>`).join('');
+}
+
+function flyTo(icao) {
+  const ac = state.aircraft[icao];
+  if (ac) map.flyTo([ac.lat, ac.lon], 7, { duration: 1.2 });
+}
+
+// ── Left panel — analytics ────────────────────────────────────────
+function renderAnalytics() {
+  const a = state.analytics;
+  if (!a || !a.total_tracked) return;
+
+  document.getElementById('an-total').textContent  = a.total_tracked;
+  document.getElementById('an-alt').textContent    = (a.avg_altitude_ft||0).toLocaleString() + ' ft';
+  document.getElementById('an-spd').textContent    = (a.avg_speed_kts||0) + ' kts';
+  document.getElementById('an-stealth').textContent= a.stealth_contacts || 0;
+  document.getElementById('an-emerg').textContent  = a.emergency_squawks || 0;
+
+  // Header stats
+  const tb = a.threat_breakdown || {};
+  document.getElementById('hdr-total').textContent   = a.total_tracked;
+  document.getElementById('hdr-hostile').textContent = tb.HOSTILE || 0;
+  document.getElementById('hdr-suspect').textContent = tb.SUSPECT || 0;
+  document.getElementById('hdr-stealth').textContent = a.stealth_contacts || 0;
+  document.getElementById('hdr-gf').textContent      = a.geofence_alerts || 0;
+  document.getElementById('hdr-emerg').textContent   = a.emergency_squawks || 0;
+
+  // Origin bars
+  const origins = a.top_origins || {};
+  const maxO = Math.max(...Object.values(origins), 1);
+  document.getElementById('origin-bars').innerHTML =
+    '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px">TOP ORIGINS</div>' +
+    Object.entries(origins).map(([k,v]) => barRow(k, v, maxO, '#00d4ff')).join('');
+
+  // Threat bars
+  const colors = { CLEAR:'#00ff9d', MONITOR:'#ffe500', SUSPECT:'#ff7700', HOSTILE:'#ff0044' };
+  const maxT = Math.max(...Object.values(tb), 1);
+  document.getElementById('threat-bars').innerHTML =
+    '<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;letter-spacing:1px">THREAT DIST</div>' +
+    Object.entries(tb).map(([k,v]) => barRow(k, v, maxT, colors[k] || '#ccc')).join('');
+}
+
+function barRow(label, val, max, color) {
+  const pct = max > 0 ? (val / max * 100).toFixed(0) : 0;
+  return `<div class="bar-row">
+    <span class="br-lbl">${label}</span>
+    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    <span class="br-num">${val}</span>
+  </div>`;
+}
+
+// ── Right panel — event log ───────────────────────────────────────
+function renderEventLog() {
+  const el = document.getElementById('event-log');
+  document.getElementById('event-count').textContent = state.events.length;
+  el.innerHTML = state.events.slice(0, 60).map(e => {
+    const t = e.timestamp ? e.timestamp.substr(11,8) : '';
+    return `<div class="event-item">
+      <span class="ev-time">${t}Z</span>
+      <span class="ev-severity ev-${['HOSTILE','SUSPECT','MONITOR','CLEAR','WARNING','INFO'].includes(e.severity) ? e.severity : 'INFO'}">[${escapeHtml(e.severity)}]</span>
+      <div class="ev-desc">${escapeHtml(e.description)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── Right panel — aircraft table ──────────────────────────────────
+function renderAircraftTable() {
+  const acs = Object.values(state.aircraft)
+    .sort((a,b) => b.threat_score - a.threat_score)
+    .slice(0, 80);
+
+  document.getElementById('ac-tbody').innerHTML = acs.map(a => {
+    const sq7 = ['7500','7600','7700'].includes(a.squawk);
+    const sigClass = { stealth:'sig-stealth', adsb:'sig-adsb', mlat:'sig-mlat', radar:'sig-radar' }[a.signature] || '';
+    return `<tr onclick="flyTo('${a.icao}')">
+      <td class="td-callsign" style="color:${threatColor(a.threat_label)}">${a.callsign}</td>
+      <td class="td-type">${a.type}</td>
+      <td class="td-alt">FL${Math.round(a.altitude/100)}</td>
+      <td class="td-spd">${a.speed}</td>
+      <td class="td-sq" ${sq7?'style="color:var(--danger);font-weight:700"':''}>${a.squawk}</td>
+      <td><span class="td-sig ${sigClass}">${a.signature.substr(0,3).toUpperCase()}</span></td>
+      <td><span class="${a.threat_label}" style="font-size:9px;padding:1px 4px;border-radius:2px">${a.threat_label.substr(0,3)}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Ticker ────────────────────────────────────────────────────────
+function updateTicker() {
+  const el = document.getElementById('ticker-inner');
+  const items = state.events.slice(0, 20).map(e => {
+    const color = { HOSTILE:'#ff0044', SUSPECT:'#ff7700' }[e.severity] || '#00d4ff';
+    return `<span class="ticker-event">
+      <span class="ticker-sev" style="background:${color};color:#fff">${escapeHtml(e.severity)}</span>
+      ${escapeHtml(e.description)}
+    </span> ◆ `;
+  });
+  el.innerHTML = items.join('') || '<span class="ticker-event" style="color:var(--text-dim)">No events — system nominal</span>';
+}
+
+// ── Clock ─────────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toISOString().substr(11,8) + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── WebSocket connection ──────────────────────────────────────────
+let ws;
+let reconnectDelay = 1000;
+
+function connectWS() {
+  const proto  = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl  = `${proto}//${location.host}/radar/ws`;
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    console.log('[ATLAS] WebSocket connected');
+    reconnectDelay = 1000;
+    document.querySelector('.dot').style.background = 'var(--accent2)';
+  };
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+  };
+
+  ws.onclose = () => {
+    document.querySelector('.dot').style.background = 'var(--danger)';
+    console.warn(`[ATLAS] WS closed — reconnecting in ${reconnectDelay}ms`);
+    setTimeout(connectWS, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+  };
+
+  ws.onerror = err => console.error('[ATLAS] WS error', err);
+}
+
+function handleMessage(msg) {
+  if (msg.type === 'snapshot') {
+    // Full initial snapshot
+    state.geofences = msg.geofences || [];
+    state.events    = msg.events    || [];
+    state.analytics = msg.analytics || {};
+    msg.aircraft.forEach(ac => {
+      state.aircraft[ac.icao] = ac;
+      upsertMarker(ac);
+    });
+    renderGeofences();
+
+  } else if (msg.type === 'update') {
+    // Incremental update
+    const newIcaos = new Set(msg.aircraft.map(a => a.icao));
+
+    // Remove departed aircraft
+    Object.keys(state.aircraft).forEach(icao => {
+      if (!newIcaos.has(icao)) {
+        removeMarker(icao);
+        delete state.aircraft[icao];
+      }
+    });
+
+    // Upsert arrived/updated aircraft
+    msg.aircraft.forEach(ac => {
+      state.aircraft[ac.icao] = ac;
+      upsertMarker(ac);
+    });
+
+    // Events
+    if (msg.new_events && msg.new_events.length) {
+      state.events = [...msg.new_events, ...state.events].slice(0, 200);
+    }
+    if (msg.analytics) state.analytics = msg.analytics;
+  }
+
+  // Re-render UI panels
+  renderThreatList();
+  renderAnalytics();
+  renderEventLog();
+  renderAircraftTable();
+  updateTicker();
+}
+
+// ── Fallback: poll REST if WS not available ────────────────────────
+async function fetchFallback() {
+  try {
+    const [acResp, evResp, anResp] = await Promise.all([
+      fetch('/radar/aircraft'), fetch('/radar/events'), fetch('/radar/analytics'),
+    ]);
+    const acData = await acResp.json();
+    const evData = await evResp.json();
+    const anData = await anResp.json();
+
+    acData.aircraft.forEach(ac => {
+      state.aircraft[ac.icao] = ac;
+      upsertMarker(ac);
+    });
+    state.events    = evData.events || [];
+    state.analytics = anData;
+
+    renderThreatList();
+    renderAnalytics();
+    renderEventLog();
+    renderAircraftTable();
+    updateTicker();
+  } catch(err) {
+    console.warn('[ATLAS] REST fallback error', err);
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────
+connectWS();
+
+// After 3 s, if WS not connected, poll REST
+setTimeout(() => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) fetchFallback();
+}, 3000);
+
+// Periodic REST refresh as belt-and-suspenders
+setInterval(async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) await fetchFallback();
+}, 10000);
+</script>
+</body>
+</html>
