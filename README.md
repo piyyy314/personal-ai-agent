@@ -26,9 +26,39 @@ This project contains a production-ready personal AI agent using LangChain, feat
 
 ### Option 1: FastAPI service (production-ready, monitored)
 - Requires OpenAI key (or swap LLM implementation).
-- Exposes `/v1/chat` (API), `/health` and `/ready` (health probes), and `/metrics` for Prometheus.
 - API runs on port 8000, health checks on port 8080
 - Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
+- Set `FLIGHT_DATA_SIGNING_KEY` in `.env` (required; see `.env.example`).
+
+#### API endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/v1/chat` | API key | AI agent chat |
+| POST | `/v1/flight-data` | API key | Ingest flight telemetry |
+| GET | `/v1/flight-data` | API key | List stored flights |
+| GET | `/v1/flight-data/{id}` | API key | Get stored flight by ID |
+| POST | `/v1/flight-analysis` | API key | Analyse flight intelligence data |
+| POST | `/v1/flights/history` | API key | Record a flight observation |
+| GET | `/v1/flights/timeline` | API key | Query flight history timeline |
+| POST | `/v1/flight-events` | API key | Publish a flight event |
+| WS | `/ws/flight-events` | API key | Subscribe to flight event stream |
+| GET | `/radar/aircraft` | API key | Current snapshot of tracked aircraft |
+| GET | `/radar/threats` | API key | Ranked SUSPECT/HOSTILE contacts |
+| GET | `/radar/analytics` | API key | Aggregated radar analytics |
+| GET | `/radar/geofences` | API key | Active geofence zones |
+| POST | `/radar/geofences` | API key | Create a geofence zone |
+| GET | `/radar/events` | API key | Recent alert/event log |
+| WS | `/radar/ws` | API key (`api_key` query param or `x-api-key` header) | Real-time aircraft push stream |
+| GET | `/radar/dashboard` | Public | Radar ops-centre HTML dashboard |
+| GET | `/healthz` | Public | Liveness probe |
+| GET | `/metrics` | Public | Prometheus metrics |
+
+> **Note:** All `/radar/*` REST endpoints and the radar WebSocket require the
+> same `x-api-key` header used for `/v1/*`.  The dashboard HTML page itself is
+> public; the JavaScript it loads connects to `/radar/ws` with the `api_key`
+> query parameter.  Flight data storage is **in-memory and instance-local**; it
+> is not shared across Kubernetes replicas.
 
 ### Option 2: Cloud-Based CLI (OpenAI)
 Uses OpenAI API - easy to set up but requires API key and sends data to cloud.
