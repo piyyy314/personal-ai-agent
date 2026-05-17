@@ -4,7 +4,7 @@ Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
 import json
 import os
-from typing import Any
+from typing import Any, List
 
 from dotenv import load_dotenv
 from flight_analysis import analyze_flight_operations
@@ -31,7 +31,7 @@ except Exception as e:
 DEFAULT_MEMORY_WINDOW_TURNS = 6
 
 
-def _build_tools(llm: Any) -> list[Any]:
+def _build_tools(llm: Any) -> List[Any]:
     """Build the reusable tool list for the hosted OpenAI-backed agent."""
     tools = []
 
