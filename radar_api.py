@@ -33,9 +33,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, Field as PydanticField, field_validator
+try:
+    # Pydantic v2
+    from pydantic import BaseModel, Field as PydanticField, field_validator
+    _PYDANTIC_V2 = True
+except ImportError:
+    # Pydantic v1
+    from pydantic import BaseModel, Field as PydanticField, validator as field_validator  # type: ignore[no-redef]
+    _PYDANTIC_V2 = False
 
 # ---------------------------------------------------------------------------
 # Routing
@@ -44,6 +51,26 @@ router = APIRouter(prefix="/radar", tags=["radar"])
 
 STATIC_DIR = Path(__file__).parent / "static"
 DASHBOARD_FILE = STATIC_DIR / "radar_dashboard.html"
+
+# ---------------------------------------------------------------------------
+# Auth dependency (mirrors /v1/* protection)
+# ---------------------------------------------------------------------------
+
+def _require_radar_api_key(request: Request) -> None:
+    """Require the same API-key auth used for /v1/* routes."""
+    # Import lazily to avoid circular imports; the token is read from the env.
+    auth_disabled = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
+    if auth_disabled:
+        return
+    api_auth_token = os.getenv("API_AUTH_TOKEN")
+    if not api_auth_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Server misconfiguration: API_AUTH_TOKEN is not configured.",
+        )
+    provided = request.headers.get("x-api-key")
+    if provided != api_auth_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -136,6 +163,7 @@ _ws_clients: List[WebSocket] = []
 
 FLEET_SIZE = 80
 TRACK_LENGTH = 40          # position history points per aircraft
+MAX_GEOFENCES = 500        # maximum user-created geofences to prevent unbounded growth
 UPDATE_HZ = 1.0            # simulation tick rate
 _sim_task: Optional[asyncio.Task] = None
 
@@ -511,14 +539,15 @@ async def serve_dashboard() -> FileResponse:
 async def get_aircraft(
     threat: Optional[str] = None,
     origin: Optional[str] = None,
-    limit: int = 200,
+    limit: int = Query(default=200, ge=1, le=1000),
+    _: None = Depends(_require_radar_api_key),
 ) -> JSONResponse:
     """Return current snapshot of tracked aircraft.
 
     Query params:
     - threat  : filter by threat_label (CLEAR|MONITOR|SUSPECT|HOSTILE)
     - origin  : filter by 2-letter country code
-    - limit   : max records returned (default 200)
+    - limit   : max records returned (default 200, max 1000)
     """
     results = list(_aircraft.values())
     if threat:
@@ -530,7 +559,7 @@ async def get_aircraft(
 
 
 @router.get("/threats")
-async def get_threats() -> JSONResponse:
+async def get_threats(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     """Return ranked threat assessments (SUSPECT and HOSTILE contacts)."""
     aircraft_snapshot = list(_aircraft.values())
     threats = [
@@ -545,13 +574,13 @@ async def get_threats() -> JSONResponse:
 
 
 @router.get("/analytics")
-async def get_analytics() -> JSONResponse:
+async def get_analytics(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     """Return aggregated radar analytics."""
     return JSONResponse(_build_analytics())
 
 
 @router.get("/geofences")
-async def get_geofences() -> JSONResponse:
+async def get_geofences(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     return JSONResponse({
         "count": len(_geofences),
         "geofences": [asdict(g) for g in _geofences],
@@ -559,6 +588,14 @@ async def get_geofences() -> JSONResponse:
 
 
 _ALERT_LEVELS = {"INFO", "WARNING", "CRITICAL"}
+
+
+def _validate_alert_level_value(v: str) -> str:
+    """Shared alert-level validation used by both Pydantic v1 and v2 validators."""
+    upper = v.upper()
+    if upper not in _ALERT_LEVELS:
+        raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
+    return upper
 
 
 class GeofenceRequest(BaseModel):
@@ -572,20 +609,35 @@ class GeofenceRequest(BaseModel):
     radius_nm: float = PydanticField(default=50.0, gt=0, le=2000.0)
     alert_level: str = PydanticField(default="WARNING")
 
-    @field_validator("alert_level")
-    @classmethod
-    def validate_alert_level(cls, v: str) -> str:
-        upper = v.upper()
-        if upper not in _ALERT_LEVELS:
-            raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
-        return upper
+    if _PYDANTIC_V2:
+        @field_validator("alert_level")  # type: ignore[misc]
+        @classmethod
+        def validate_alert_level(cls, v: str) -> str:
+            return _validate_alert_level_value(v)
+    else:
+        @field_validator("alert_level", pre=True, always=True)  # type: ignore[misc]
+        @classmethod
+        def validate_alert_level(cls, v: str) -> str:
+            return _validate_alert_level_value(v)
 
 
 @router.post("/geofences")
-async def create_geofence(body: GeofenceRequest) -> JSONResponse:
-    """Create a new geofence zone."""
+async def create_geofence(
+    body: GeofenceRequest,
+    _: None = Depends(_require_radar_api_key),
+) -> JSONResponse:
+    """Create a new geofence zone.
+
+    Limited to MAX_GEOFENCES total (excluding seed zones) to prevent
+    unbounded in-memory growth.
+    """
+    if len(_geofences) >= MAX_GEOFENCES:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Geofence limit reached ({MAX_GEOFENCES}). Delete existing zones before creating new ones.",
+        )
     gz = GeofenceZone(
-        zone_id=f"GF{random.randint(100, 999)}",
+        zone_id=str(uuid.uuid4()),
         name=body.name,
         lat=body.lat,
         lon=body.lon,
@@ -597,7 +649,10 @@ async def create_geofence(body: GeofenceRequest) -> JSONResponse:
 
 
 @router.get("/events")
-async def get_events(limit: int = 50) -> JSONResponse:
+async def get_events(
+    limit: int = Query(default=50, ge=1, le=500),
+    _: None = Depends(_require_radar_api_key),
+) -> JSONResponse:
     """Return recent alert/event log."""
     returned = list(_events)[:limit]
     return JSONResponse({
@@ -613,7 +668,23 @@ async def get_events(limit: int = 50) -> JSONResponse:
 
 @router.websocket("/ws")
 async def websocket_stream(ws: WebSocket) -> None:
-    """Real-time push stream of aircraft positions and analytics."""
+    """Real-time push stream of aircraft positions and analytics.
+
+    Authentication: pass the API key as the ``api_key`` query parameter or
+    the ``x-api-key`` header (mirrors /v1/* REST auth).
+    """
+    # Authenticate before accepting the connection.
+    auth_disabled = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
+    if not auth_disabled:
+        api_auth_token = os.getenv("API_AUTH_TOKEN")
+        if not api_auth_token:
+            await ws.close(code=1011, reason="API_AUTH_TOKEN is not configured")
+            return
+        provided = ws.headers.get("x-api-key") or ws.query_params.get("api_key")
+        if provided != api_auth_token:
+            await ws.close(code=1008, reason="Unauthorized")
+            return
+
     await ws.accept()
     _ws_clients.append(ws)
     # Send initial full snapshot including track history

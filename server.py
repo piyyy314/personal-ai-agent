@@ -5,11 +5,17 @@ Run: uvicorn server:app --host 0.0.0.0 --port 8000
 """
 import asyncio
 import json
+import math
 import os
+import random
+import threading
+import time
+import warnings
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
@@ -33,6 +39,7 @@ from monitoring import (
     set_session_status,
     timer,
 )
+from flight_data_backend import FlightDataService
 from prometheus_client import CONTENT_TYPE_LATEST
 from radar_api import router as radar_router, radar_startup_async, radar_shutdown
 
@@ -42,6 +49,31 @@ load_dotenv()
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 PRIORITY_ORDER = {"low": 0, "normal": 1, "high": 2, "critical": 3}
+_MIN_SIGNING_KEY_LENGTH = 16
+
+
+def _get_flight_data_signing_key() -> str:
+    """Read and validate FLIGHT_DATA_SIGNING_KEY from the environment.
+
+    Raises RuntimeError if the key is absent so the server refuses to start
+    without proper integrity protection configured.
+    """
+    signing_key = os.getenv("FLIGHT_DATA_SIGNING_KEY")
+    if not signing_key:
+        raise RuntimeError(
+            "FLIGHT_DATA_SIGNING_KEY must be configured. "
+            "See .env.example for guidance."
+        )
+    if len(signing_key) < _MIN_SIGNING_KEY_LENGTH:
+        warnings.warn(
+            f"FLIGHT_DATA_SIGNING_KEY is shorter than {_MIN_SIGNING_KEY_LENGTH} characters; "
+            "use a longer secret for stronger integrity protection.",
+            stacklevel=2,
+        )
+    return signing_key
+
+
+flight_data_service = FlightDataService(signing_key=_get_flight_data_signing_key())
 
 
 @asynccontextmanager
@@ -99,6 +131,39 @@ class ChatResponse(BaseModel):
     suspicious: Optional[str] = None
     cache_hit: bool = False
     stealth: bool = False
+
+
+class FlightPointRequest(BaseModel):
+    timestamp: str
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    altitude: float
+    altitude_unit: Literal["ft", "m"] = "ft"
+    speed: float
+    speed_unit: Literal["kts", "kmh", "mph"] = "kts"
+    heading: float = Field(..., ge=0.0, lt=360.0)
+    vertical_rate: Optional[float] = None
+    vertical_rate_unit: Literal["fpm", "mps"] = "fpm"
+    transponder: Literal["on", "off", "unknown"] = "unknown"
+    signature: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    source: str = "unknown"
+
+
+class FlightIngestRequest(BaseModel):
+    flight_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        description="Path-safe flight identifier used in /v1/flight-data/{flight_id}.",
+    )
+    callsign: Optional[str] = None
+    tail_number: Optional[str] = None
+    aircraft_type: Optional[str] = None
+    operator: Optional[str] = None
+    stealth_mode: bool = False
+    metadata: Dict[str, object] = Field(default_factory=dict)
+    points: List[FlightPointRequest]
 
 
 class FlightAnalysisRequest(BaseModel):
@@ -678,3 +743,56 @@ async def websocket_flight_events(websocket: WebSocket) -> None:
             "flight_stream_disconnected",
             {"client": websocket.client.host if websocket.client else "unknown"},
         )
+
+
+def _model_to_dict_safe(model: BaseModel) -> Dict[str, Any]:
+    """Pydantic v1/v2 compatible model serialisation."""
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()  # type: ignore[return-value]
+
+
+@app.post("/v1/flight-data")
+async def ingest_flight_data(
+    request: FlightIngestRequest, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    """Ingest a batch of flight telemetry points.
+
+    The flight data service uses **in-memory/ephemeral, instance-local**
+    storage.  In a multi-replica deployment, POST and GET calls may be routed
+    to different pods, resulting in 404 on retrieval.  Use a shared-storage
+    backend for multi-replica deployments.
+    """
+    try:
+        snapshot = flight_data_service.ingest(_model_to_dict_safe(request))
+    except ValueError as validation_error:
+        raise HTTPException(status_code=422, detail=str(validation_error)) from validation_error
+
+    audit_event(
+        "flight_data_ingested",
+        {
+            "flight_id": snapshot["flight_id"],
+            "records_ingested": snapshot["records_ingested"],
+            "stealth_mode": snapshot["stealth_mode"],
+        },
+    )
+    return JSONResponse(content=snapshot)
+
+
+@app.get("/v1/flight-data")
+async def list_flight_data(_: None = Depends(require_api_key)) -> JSONResponse:
+    """List all stored flight snapshots (in-memory/ephemeral, instance-local)."""
+    snapshots = flight_data_service.list_flights()
+    return JSONResponse(content={"items": snapshots, "count": len(snapshots)})
+
+
+@app.get("/v1/flight-data/{flight_id}")
+async def get_flight_data(
+    flight_id: str, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    """Retrieve a stored flight snapshot by ID (in-memory/ephemeral, instance-local)."""
+    try:
+        snapshot = flight_data_service.get_flight(flight_id)
+    except KeyError as missing_flight:
+        raise HTTPException(status_code=404, detail="Flight not found") from missing_flight
+    return JSONResponse(content=snapshot)
