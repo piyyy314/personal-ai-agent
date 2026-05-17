@@ -124,11 +124,9 @@ def start_metrics_server(host: Optional[str] = None, port: Optional[int] = None)
 def set_session_status(running: bool) -> None:
     """Set the session status and update uptime"""
     SESSION_HEALTH.set(1 if running else 0)
+    ACTIVE_SESSIONS.set(1 if running else 0)
     if running:
-        ACTIVE_SESSIONS.inc()
         update_uptime()
-    else:
-        ACTIVE_SESSIONS.dec()
 
 
 def update_uptime() -> None:
