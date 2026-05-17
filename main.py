@@ -19,6 +19,8 @@ from monitoring import (
     timer,
 )
 
+STEALTH_PREFIX = "/stealth "
+
 
 def main():
     load_dotenv()
@@ -30,6 +32,7 @@ def main():
 
     agent = create_agent()
     print("Personal AI agent started. Type 'exit' to quit.")
+    print("Use '/stealth your prompt' for a low-footprint request.")
     while True:
         try:
             query = input("\nYou: ").strip()
@@ -38,6 +41,12 @@ def main():
             if query.lower() in ("exit", "quit"):
                 print("Goodbye.")
                 break
+            stealth = False
+            if query.startswith(STEALTH_PREFIX):
+                stealth = True
+                query = query[len(STEALTH_PREFIX) :].strip()
+                if not query:
+                    continue
 
             suspicious = detect_suspicious_query(query)
             if suspicious:
@@ -47,7 +56,8 @@ def main():
             audit_event("query", {"query_length": len(query), "source": "cli"})
             start_time = timer()
             try:
-                response = agent.invoke({"input": query})["output"]
+                result = agent.invoke({"input": query, "stealth": stealth})
+                response = result["output"]
                 duration = timer() - start_time
                 record_request_outcome("success", duration, source="cli")
                 audit_event(
@@ -55,11 +65,16 @@ def main():
                     {
                         "latency_ms": round(duration * 1000, 2),
                         "outcome": "success",
+                        "stealth": stealth,
+                        "cache_hit": bool(result.get("cache_hit")),
                         "response_length": len(response),
                         "source": "cli",
                     },
                 )
-                print("\nAgent:", response)
+                if result.get("cache_hit"):
+                    print("\nAgent [cache]:", response)
+                else:
+                    print("\nAgent:", response)
             except Exception as run_error:
                 duration = timer() - start_time
                 record_request_outcome("error", duration, source="cli")

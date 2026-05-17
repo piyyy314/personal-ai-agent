@@ -6,8 +6,11 @@ This project contains a production-ready personal AI agent using LangChain, feat
 
 ### Core Functionality
 - Conversational memory (in-process)
+- Bounded session memory for power-user workloads
+- Privacy-aware response caching with stealth request support
 - Optional web search via SerpAPI
 - Calculator tool (LLM Math Chain)
+- Flight/event intelligence analysis with filtering, search, and threat overlays
 - CLI loop for local use
 
 ### Production Features
@@ -15,6 +18,7 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - **Multi-Channel Alerting**: Slack, PagerDuty, email notifications
 - **Compliance**: Audit logging, GDPR/SOC2 alignment, data retention policies
 - **Security**: Container hardening, encryption, access controls
+- **Historical Flight Replay**: Encrypted-at-rest aircraft movement history with indexed replay/timeline analysis
 - **High Availability**: Kubernetes deployment, health checks, auto-restart
 - **Incident Response**: Forensic tools, emergency procedures, runbooks
 
@@ -78,13 +82,14 @@ The production deployment includes:
 6. Test:
    ```bash
    curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
-     -d '{"prompt":"hello"}' http://localhost:8000/v1/chat
+      -d '{"prompt":"hello","stealth":true}' http://localhost:8000/v1/chat
    ```
 
 Or run in CLI mode:
    ```bash
    python main.py
    ```
+   Prefix a prompt with `/stealth ` to avoid growing conversation history for that request.
 
 ### Production Deployment (Docker Compose)
 
@@ -133,6 +138,44 @@ kubectl apply -f deploy/kubernetes/deployment.yml
 
 - `/healthz` - Liveness probe
 - `/metrics` - Prometheus metrics endpoint
+- `/v1/flight-analysis` - Authenticated JSON analysis endpoint for flight/event filtering, search, and overlays
+- `/v1/flights/history` - Store a historical aircraft movement point
+- `/v1/flights/timeline` - Build investigation-ready timeline layers across one or many aircraft
+- `/v1/flights/{aircraft_id}/replay` - Replay a historical track with optional sampling
+
+### Flight Analysis API
+
+Submit flight/event datasets for filtering, ranked search, and overlay generation:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"flights":[{"id":"F-001","callsign":"RAVEN1","altitude":4500,"squawk":"7700"}],"events":[],"filters":{"flagged_only":true}}' \
+  http://localhost:8000/v1/flight-analysis
+```
+
+### Historical Flight Tracking API
+
+Store an observation:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"aircraft_id":"EAGLE1","timestamp":"2026-01-01T12:00:00Z","latitude":38.8,"longitude":-77.0,"altitude_ft":12000,"event_type":"position","source":"ads-b"}' \
+  http://localhost:8000/v1/flights/history
+```
+
+Replay a track:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" \
+  "http://localhost:8000/v1/flights/EAGLE1/replay?interval_seconds=60"
+```
+
+Build a forensic timeline:
+
+```bash
+curl -H "x-api-key: $API_AUTH_TOKEN" \
+  "http://localhost:8000/v1/flights/timeline?start_time=2026-01-01T00:00:00Z&end_time=2026-01-02T00:00:00Z"
+```
 
 ## Health Check
 
@@ -199,6 +242,9 @@ See [COMPLIANCE.md](COMPLIANCE.md) for details.
 - `agent_requests_total` - Total requests by status and source
 - `agent_request_latency_seconds` - Response time histogram
 - `agent_security_events_total` - Security/anomaly events
+- `agent_cache_events_total` - Cache hits, misses, expirations, and bypasses
+- `agent_cache_entries` - Current in-memory cache size
+- `agent_stealth_requests_total` - Low-footprint request count
 - `agent_session_status` - 1 when running, 0 when stopped
 
 ## Alerting
