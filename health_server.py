@@ -7,8 +7,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import logging
 import threading
-from monitoring import metrics_response, SESSION_HEALTH
 
+from monitoring import is_session_running, metrics_response
+from prometheus_client import CONTENT_TYPE_LATEST
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         """Override to use structured logging"""
-        logger.debug(f"{self.address_string()} - {format % args}")
+        logger.debug("%s - %s", self.address_string(), format % args)
 
     def do_GET(self):
         """Handle GET requests"""
@@ -35,11 +36,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_health(self):
         """Liveness probe endpoint"""
-        # Simple health check - service is alive if this responds
-        health_status = {
-            "status": "healthy",
-            "service": "personal-ai-agent"
-        }
+        health_status = {"status": "healthy"}
 
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -48,18 +45,12 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_ready(self):
         """Readiness probe endpoint"""
-        # Check if session is ready via SESSION_HEALTH gauge
-        try:
-            session_value = SESSION_HEALTH._value.get()
-            is_ready = session_value > 0
-        except Exception:
-            is_ready = False
-
-        ready_status = {
-            "status": "ready" if is_ready else "not_ready",
-            "service": "personal-ai-agent"
-        }
-        status_code = 200 if is_ready else 503
+        if is_session_running():
+            ready_status = {"status": "ready"}
+            status_code = 200
+        else:
+            ready_status = {"status": "not_ready"}
+            status_code = 503
 
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
@@ -71,7 +62,7 @@ class HealthHandler(BaseHTTPRequestHandler):
         metrics_data = metrics_response()
 
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; version=0.0.4")
+        self.send_header("Content-Type", CONTENT_TYPE_LATEST)
         self.end_headers()
         self.wfile.write(metrics_data)
 
@@ -97,7 +88,7 @@ def start_health_server(port: int = 8080):
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.info(f"Health check server started on port {port}")
+    logger.info("Health check server started on port %d", port)
     return server
 
 
@@ -112,3 +103,4 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nShutting down...")
+

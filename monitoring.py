@@ -36,6 +36,19 @@ SECURITY_EVENTS = Counter(
     "Security, compliance, or anomaly events.",
     ["event_type"],
 )
+CACHE_EVENTS = Counter(
+    "agent_cache_events_total",
+    "Privacy-aware cache activity by outcome and mode.",
+    ["outcome", "mode"],
+)
+STEALTH_REQUESTS = Counter(
+    "agent_stealth_requests_total",
+    "Total low-footprint stealth requests.",
+)
+CACHE_ENTRIES = Gauge(
+    "agent_cache_entries",
+    "Current number of cached responses kept in memory.",
+)
 SESSION_HEALTH = Gauge(
     "agent_session_status",
     "1 when the agent loop/API is running; 0 when stopped.",
@@ -63,8 +76,9 @@ class JsonFormatter(logging.Formatter):
     """Minimal JSON log formatter for structured logs."""
 
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
+        timestamp = self.formatTime(record, "%Y-%m-%dT%H:%M:%SZ")
         payload: Dict[str, object] = {
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -91,6 +105,10 @@ def configure_logging() -> None:
     root.addHandler(stream_handler)
 
     audit_logger = logging.getLogger("audit")
+    for handler in list(audit_logger.handlers):
+        if getattr(handler, "managed_by_configure_logging", False):
+            audit_logger.removeHandler(handler)
+            handler.close()
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = True
     if audit_log_path:
@@ -99,6 +117,7 @@ def configure_logging() -> None:
             if audit_log_dir:
                 os.makedirs(audit_log_dir, exist_ok=True)
             file_handler = logging.FileHandler(audit_log_path)
+            file_handler.managed_by_configure_logging = True
             file_handler.setFormatter(formatter)
             audit_logger.addHandler(file_handler)
         except OSError as exc:
@@ -121,8 +140,13 @@ def start_metrics_server(host: Optional[str] = None, port: Optional[int] = None)
     start_http_server(port, addr=host)
 
 
+_session_running: bool = False
+
+
 def set_session_status(running: bool) -> None:
-    """Set the session status and update uptime"""
+    """Set the session status and update uptime."""
+    global _session_running
+    _session_running = running
     SESSION_HEALTH.set(1 if running else 0)
     ACTIVE_SESSIONS.set(1 if running else 0)
     if running:
@@ -133,6 +157,11 @@ def update_uptime() -> None:
     """Update the uptime gauge"""
     uptime = time.time() - _start_time
     UPTIME_GAUGE.set(uptime)
+
+
+def is_session_running() -> bool:
+    """Return True when the agent session is active."""
+    return _session_running
 
 
 def record_request_outcome(status: str, duration_seconds: float, source: str) -> None:
@@ -146,8 +175,20 @@ def record_security_event(event_type: str) -> None:
 
 
 def record_compliance_violation() -> None:
-    """Record a compliance violation"""
+    """Record a compliance violation."""
     COMPLIANCE_VIOLATIONS.inc()
+
+
+def record_cache_event(outcome: str, mode: str) -> None:
+    CACHE_EVENTS.labels(outcome=outcome, mode=mode).inc()
+
+
+def set_cache_entries(count: int) -> None:
+    CACHE_ENTRIES.set(max(0, count))
+
+
+def record_stealth_request() -> None:
+    STEALTH_REQUESTS.inc()
 
 
 SUSPICIOUS_PATTERNS = {
@@ -165,12 +206,29 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
+    metadata = dict(details or {})
+    # New callers should use "outcome"; "status" is accepted for legacy compatibility.
+    if "outcome" in metadata:
+        outcome = metadata.pop("outcome")
+    elif "status" in metadata:
+        outcome = metadata.pop("status")
+    else:
+        outcome = "success"
     logging.getLogger("audit").info(
         event,
         extra={
             "extra": {
-                "event": event,
-                **(details or {}),
+                "event_type": str(metadata.pop("event_type", "audit")),
+                "action": str(metadata.pop("action", event)),
+                "resource": str(metadata.pop("resource", "agent")),
+                "outcome": str(outcome),
+                "session_id": str(
+                    metadata.pop("session_id", os.getenv("AUDIT_SESSION_ID", "system"))
+                ),
+                "user_id": str(
+                    metadata.pop("user_id", os.getenv("AUDIT_USER_ID", "system"))
+                ),
+                "metadata": metadata,
             }
         },
     )
@@ -183,4 +241,3 @@ def metrics_response():
 
 def timer() -> float:
     return time.perf_counter()
-

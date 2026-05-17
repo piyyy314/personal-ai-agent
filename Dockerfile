@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r agent && useradd -r -g agent agent
+# Create non-root user for security (UID/GID 1000 to match Kubernetes securityContext)
+RUN groupadd -r -g 1000 agent && useradd -r -u 1000 -g agent agent
 
 # Create application directory
 WORKDIR /app
