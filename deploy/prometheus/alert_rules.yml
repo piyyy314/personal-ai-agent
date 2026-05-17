@@ -15,7 +15,7 @@ groups:
           runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/agent-down"
 
       - alert: HighErrorRate
-        expr: rate(agent_requests_total{status="error"}[5m]) / rate(agent_requests_total[5m]) > 0.1
+        expr: sum(rate(agent_requests_total{status="error"}[5m])) / sum(rate(agent_requests_total[5m])) > 0.1
         for: 5m
         labels:
           severity: critical
