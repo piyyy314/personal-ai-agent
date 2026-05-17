@@ -112,17 +112,17 @@ class ChatResponse(BaseModel):
 
 class FlightPointRequest(BaseModel):
     timestamp: str
-    latitude: float
-    longitude: float
-    altitude: float
+    latitude: float = Field(..., ge=-90.0, le=90.0, allow_inf_nan=False)
+    longitude: float = Field(..., ge=-180.0, le=180.0, allow_inf_nan=False)
+    altitude: float = Field(..., allow_inf_nan=False)
     altitude_unit: Literal["ft", "m"] = "ft"
-    speed: float
+    speed: float = Field(..., allow_inf_nan=False)
     speed_unit: Literal["kts", "kmh", "mph"] = "kts"
-    heading: float
-    vertical_rate: Optional[float] = None
+    heading: float = Field(..., ge=0.0, lt=360.0, allow_inf_nan=False)
+    vertical_rate: Optional[float] = Field(default=None, allow_inf_nan=False)
     vertical_rate_unit: Literal["fpm", "mps"] = "fpm"
     transponder: Literal["on", "off", "unknown"] = "unknown"
-    signature: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    signature: Optional[float] = Field(default=None, ge=0.0, le=1.0, allow_inf_nan=False)
     source: str = "unknown"
 
 
