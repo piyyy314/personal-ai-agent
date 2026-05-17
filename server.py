@@ -65,6 +65,21 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
 _agent = None
 
+_DASHBOARD_HTML_PATH = Path(__file__).with_name("dashboard.html")
+_AIRCRAFT_LOCK = threading.Lock()
+_AIRCRAFT_STATE: list["AircraftStatePayload"] = []
+_LAST_AIRCRAFT_UPDATE = time.time()
+_MIN_UPDATE_INTERVAL_SEC = 0.1
+_MAX_UPDATE_INTERVAL_SEC = 3.0
+_MAX_HEADING_CHANGE_DEGREES = 4.0
+_MIN_ALTITUDE_FT = 500.0
+_MAX_ALTITUDE_FT = 45000.0
+_ALTITUDE_VARIATION_FT = 220.0
+_BOUNDARY_RADIUS_NM = 100
+_SECONDS_PER_HOUR = 3600.0
+_HOURS_PER_SECOND = 1.0 / _SECONDS_PER_HOUR
+_STEALTH_PROBABILITY = 0.18
+
 
 class ChatRequest(BaseModel):
     prompt: str = Field(..., description="User prompt for the AI agent.")
@@ -240,6 +255,114 @@ def _model_to_dict(model: BaseModel) -> Dict[str, Any]:
     if hasattr(model, "model_dump"):
         return model.model_dump()
     return model.dict()
+
+
+class AircraftState(BaseModel):
+    id: str
+    call_sign: str
+    type: str
+    stealth: bool
+    x: float
+    y: float
+    heading: float
+    speed_kts: float
+    altitude_ft: float
+
+
+class LiveAircraftResponse(BaseModel):
+    aircraft: list[AircraftState]
+    updated_at: int
+    range_nm: int
+
+
+class AircraftStatePayload(TypedDict):
+    id: str
+    call_sign: str
+    type: str
+    stealth: bool
+    x: float
+    y: float
+    heading: float
+    speed_kts: float
+    altitude_ft: float
+
+
+def _build_aircraft_state(count: int = 24) -> list[AircraftStatePayload]:
+    """Create initial synthetic aircraft data for the radar dashboard feed."""
+    aircraft_types = ["commercial", "cargo", "military", "private", "drone"]
+    state: list[AircraftStatePayload] = []
+    for idx in range(count):
+        angle = random.uniform(0, 360)
+        radius = random.uniform(12, 95)
+        heading = random.uniform(0, 360)
+        speed = random.uniform(120, 620)
+        altitude = random.uniform(1500, 43000)
+        state.append(
+            {
+                "id": f"AC{idx + 1:03d}",
+                "call_sign": f"PX{random.randint(100, 999)}",
+                "type": random.choice(aircraft_types),
+                "stealth": random.random() < _STEALTH_PROBABILITY,
+                "x": math.sin(math.radians(angle)) * radius,
+                "y": math.cos(math.radians(angle)) * radius,
+                "heading": heading,
+                "speed_kts": speed,
+                "altitude_ft": altitude,
+            }
+        )
+    return state
+
+
+def _update_aircraft_state() -> list[AircraftStatePayload]:
+    """Advance the synthetic aircraft simulation and return response-safe snapshots."""
+    global _AIRCRAFT_STATE, _LAST_AIRCRAFT_UPDATE
+    now = time.time()
+    dt = min(
+        max(now - _LAST_AIRCRAFT_UPDATE, _MIN_UPDATE_INTERVAL_SEC),
+        _MAX_UPDATE_INTERVAL_SEC,
+    )
+    _LAST_AIRCRAFT_UPDATE = now
+    if not _AIRCRAFT_STATE:
+        _AIRCRAFT_STATE = _build_aircraft_state()
+
+    for aircraft in _AIRCRAFT_STATE:
+        speed_nm_per_sec = aircraft["speed_kts"] * _HOURS_PER_SECOND
+        distance = speed_nm_per_sec * dt
+        angle_radians = math.radians(aircraft["heading"])
+        aircraft["x"] += math.sin(angle_radians) * distance
+        aircraft["y"] += math.cos(angle_radians) * distance
+        aircraft["heading"] = (
+            aircraft["heading"]
+            + random.uniform(
+                -_MAX_HEADING_CHANGE_DEGREES,
+                _MAX_HEADING_CHANGE_DEGREES,
+            )
+        ) % 360
+        aircraft["altitude_ft"] = min(
+            _MAX_ALTITUDE_FT,
+            max(
+                _MIN_ALTITUDE_FT,
+                aircraft["altitude_ft"]
+                + random.uniform(-_ALTITUDE_VARIATION_FT, _ALTITUDE_VARIATION_FT),
+            ),
+        )
+        if math.hypot(aircraft["x"], aircraft["y"]) > _BOUNDARY_RADIUS_NM:
+            aircraft["heading"] = (aircraft["heading"] + 180) % 360
+
+    return [
+        {
+            "id": aircraft["id"],
+            "call_sign": aircraft["call_sign"],
+            "type": aircraft["type"],
+            "stealth": aircraft["stealth"],
+            "x": round(aircraft["x"], 3),
+            "y": round(aircraft["y"], 3),
+            "heading": round(aircraft["heading"], 1),
+            "speed_kts": round(aircraft["speed_kts"], 1),
+            "altitude_ft": round(aircraft["altitude_ft"], 1),
+        }
+        for aircraft in _AIRCRAFT_STATE
+    ]
 
 
 def require_api_key(request: Request) -> None:
