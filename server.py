@@ -265,7 +265,7 @@ async def chat(
 
 
 @app.get("/v1/aircraft/live", response_model=LiveAircraftResponse)
-async def live_aircraft() -> LiveAircraftResponse:
+async def live_aircraft(_: None = Depends(require_api_key)) -> LiveAircraftResponse:
     with _AIRCRAFT_LOCK:
         aircraft = _update_aircraft_state()
     return LiveAircraftResponse(
