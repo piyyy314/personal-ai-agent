@@ -52,7 +52,10 @@ async def lifespan(app: FastAPI):
     set_session_status(False)
     audit_event("shutdown", {"mode": "api"})
     await radar_shutdown()
-    health_server.shutdown()
+    if health_server is not None:
+        health_server.shutdown()
+        if hasattr(health_server, "server_close"):
+            health_server.server_close()
 
 
 app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
@@ -160,6 +163,7 @@ async def chat(
         record_security_event(suspicious)
         audit_event("suspicious_query", {"pattern": suspicious, "source": "api"})
 
+    audit_event("query", {"query_length": len(request.prompt), "source": "api"})
     start_time = timer()
     try:
         result = get_agent().invoke(
@@ -178,8 +182,9 @@ async def chat(
             "response",
             {
                 "latency_ms": round(duration * 1000, 2),
-                "status": "success",
+                "outcome": "success",
                 "source": "api",
+                "response_length": len(reply),
                 "stealth": request.stealth,
                 "cache_hit": cache_hit,
             },
@@ -201,14 +206,12 @@ async def chat(
             "response",
             {
                 "latency_ms": round(duration * 1000, 2),
-                "status": "error",
+                "outcome": "error",
                 "source": "api",
                 "error": str(run_error),
             },
         )
         raise HTTPException(status_code=500, detail="Agent failed to respond") from run_error
-
-
 @app.post("/v1/flight-analysis")
 async def flight_analysis(
     request: FlightAnalysisRequest, _: None = Depends(require_api_key)

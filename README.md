@@ -196,6 +196,29 @@ Run the health check script:
 - For higher privacy, swap the LLM wrapper to a local model (e.g., LlamaCPP) and remove cloud API keys
 - Avoid adding tools that run arbitrary shell commands unless you add strict safeguards
 
+## Security Operations Scenarios
+
+These workflows are designed for authorized defensive operations. Think comprehensive observability with minimal operational impact rather than covert action: high-fidelity telemetry, quiet observation, and strict data handling.
+
+### 1. Threat triage with minimal operator friction
+
+- Protect `/v1/chat` with `API_AUTH_TOKEN` so every analyst request is authenticated
+- Use the suspicious-query detector to flag credential probes, exfiltration language, and privilege-escalation attempts
+- Review the API health endpoint (`/healthz` on port `8000`) alongside the health probe service (`/health`, `/ready`, `/metrics` on port `8080`) for live operational status
+
+### 2. Quiet investigation during incident response
+
+- Prefer passive monitoring from the dedicated health/metrics service when you only need service state and Prometheus counters
+- Use structured audit logs to reconstruct access attempts, suspicious classifications, and response timing without storing raw prompts
+- Follow the read-only investigation flow in [INCIDENT_RESPONSE.md](INCIDENT_RESPONSE.md) when you need "stealth" monitoring that avoids unnecessary changes to the running service
+
+### 3. Privacy-first deployment and data safety
+
+- Keep prompts and secrets out of logs; the default audit trail stores metadata such as query length, response length, status, and source
+- Use `AUDIT_LOG_PATH` to persist JSON audit records for retention and forensics
+- For the strongest data-boundary posture, use the local-model flow in [SETUP_LOCAL.md](SETUP_LOCAL.md) and remove cloud API keys
+- Rotate API keys and review audit logs after any suspected misuse or break-glass event
+
 ## Compliance
 
 The system supports:

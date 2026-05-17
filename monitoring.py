@@ -59,8 +59,9 @@ class JsonFormatter(logging.Formatter):
     """Minimal JSON log formatter for structured logs."""
 
     def format(self, record: logging.LogRecord) -> str:  # type: ignore[override]
+        timestamp = self.formatTime(record, "%Y-%m-%dT%H:%M:%SZ")
         payload: Dict[str, object] = {
-            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%SZ"),
+            "timestamp": timestamp,
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -87,6 +88,10 @@ def configure_logging() -> None:
     root.addHandler(stream_handler)
 
     audit_logger = logging.getLogger("audit")
+    for handler in list(audit_logger.handlers):
+        if getattr(handler, "managed_by_configure_logging", False):
+            audit_logger.removeHandler(handler)
+            handler.close()
     audit_logger.setLevel(logging.INFO)
     audit_logger.propagate = True
     if audit_log_path:
@@ -95,6 +100,7 @@ def configure_logging() -> None:
             if audit_log_dir:
                 os.makedirs(audit_log_dir, exist_ok=True)
             file_handler = logging.FileHandler(audit_log_path)
+            file_handler.managed_by_configure_logging = True
             file_handler.setFormatter(formatter)
             audit_logger.addHandler(file_handler)
         except OSError as exc:
@@ -167,12 +173,29 @@ def detect_suspicious_query(query: str) -> Optional[str]:
 
 
 def audit_event(event: str, details: Optional[Dict[str, object]] = None) -> None:
+    metadata = dict(details or {})
+    # New callers should use "outcome"; "status" is accepted for legacy compatibility.
+    if "outcome" in metadata:
+        outcome = metadata.pop("outcome")
+    elif "status" in metadata:
+        outcome = metadata.pop("status")
+    else:
+        outcome = "success"
     logging.getLogger("audit").info(
         event,
         extra={
             "extra": {
-                "event": event,
-                **(details or {}),
+                "event_type": str(metadata.pop("event_type", "audit")),
+                "action": str(metadata.pop("action", event)),
+                "resource": str(metadata.pop("resource", "agent")),
+                "outcome": str(outcome),
+                "session_id": str(
+                    metadata.pop("session_id", os.getenv("AUDIT_SESSION_ID", "system"))
+                ),
+                "user_id": str(
+                    metadata.pop("user_id", os.getenv("AUDIT_USER_ID", "system"))
+                ),
+                "metadata": metadata,
             }
         },
     )
