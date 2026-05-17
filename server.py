@@ -16,6 +16,11 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from aircraft_visualization import (
+    AircraftSnapshot,
+    build_aircraft_analysis,
+    render_aircraft_visualization,
+)
 from dotenv import load_dotenv
 from health_server import start_health_server
 from monitoring import (
