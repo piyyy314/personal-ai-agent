@@ -590,6 +590,14 @@ async def get_geofences(_: None = Depends(_require_radar_api_key)) -> JSONRespon
 _ALERT_LEVELS = {"INFO", "WARNING", "CRITICAL"}
 
 
+def _validate_alert_level_value(v: str) -> str:
+    """Shared alert-level validation used by both Pydantic v1 and v2 validators."""
+    upper = v.upper()
+    if upper not in _ALERT_LEVELS:
+        raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
+    return upper
+
+
 class GeofenceRequest(BaseModel):
     name: str = PydanticField(
         default="Custom Zone",
@@ -605,18 +613,12 @@ class GeofenceRequest(BaseModel):
         @field_validator("alert_level")  # type: ignore[misc]
         @classmethod
         def validate_alert_level(cls, v: str) -> str:
-            upper = v.upper()
-            if upper not in _ALERT_LEVELS:
-                raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
-            return upper
+            return _validate_alert_level_value(v)
     else:
         @field_validator("alert_level", pre=True, always=True)  # type: ignore[misc]
         @classmethod
         def validate_alert_level(cls, v: str) -> str:
-            upper = v.upper()
-            if upper not in _ALERT_LEVELS:
-                raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
-            return upper
+            return _validate_alert_level_value(v)
 
 
 @router.post("/geofences")

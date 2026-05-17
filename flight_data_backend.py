@@ -372,7 +372,14 @@ class FlightDataService:
     def list_flights(self) -> List[Dict[str, object]]:
         with self._lock:
             flight_ids = sorted(self._store)
-        return [self._build_public_view(fid) for fid in flight_ids if fid in self._store]
+        result = []
+        for fid in flight_ids:
+            try:
+                result.append(self._build_public_view(fid))
+            except KeyError:
+                # Flight was evicted between the snapshot and the view build.
+                pass
+        return result
 
     def _build_public_view(self, flight_id: str) -> Dict[str, object]:
         with self._lock:

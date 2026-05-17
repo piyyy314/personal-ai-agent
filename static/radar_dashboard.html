@@ -289,9 +289,7 @@ function drawRadarSweep() {
   ctx.beginPath(); ctx.moveTo(x, y - radius); ctx.lineTo(x, y + radius); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x - radius, y); ctx.lineTo(x + radius, y); ctx.stroke();
 
-  // Sweep gradient
-  // (grad/grad2 are computed but only applied to fill below; kept here for
-  //  potential future use — removed unused createConicalGradient allocation)
+  // Sweep arc (manual because conical gradient is not universally supported)
   const arcLen = Math.PI / 2.5;
 
   ctx.save();
