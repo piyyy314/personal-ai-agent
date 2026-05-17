@@ -9,7 +9,7 @@ import os
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.encoders import jsonable_encoder
@@ -170,7 +170,7 @@ class FlightStreamManager:
             if connection is not None:
                 connection.filters = filters
 
-    async def publish(self, event: FlightEvent) -> tuple[Dict[str, Any], int]:
+    async def publish(self, event: FlightEvent) -> Tuple[Dict[str, Any], int]:
         async with self._lock:
             self._sequence += 1
             sequence = self._sequence
