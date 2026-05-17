@@ -57,7 +57,7 @@ if curl -sf "${METRICS_ENDPOINT}" > /dev/null 2>&1; then
 
     # Calculate total and failed requests from agent_requests_total metric with status label
     REQUESTS_TOTAL=$(echo "$METRICS" | grep 'agent_requests_total{' | awk '{sum += $2} END {print sum+0}')
-    REQUESTS_FAILED=$(echo "$METRICS" | grep 'agent_requests_total{.*status="error"' | awk '{print $2}' || echo "0")
+    REQUESTS_FAILED=$(echo "$METRICS" | grep 'agent_requests_total{.*status="error"' | awk '{sum += $2} END {print sum+0}')
 
     echo "  Uptime: ${UPTIME}s"
     echo "  Total Requests: ${REQUESTS_TOTAL}"
