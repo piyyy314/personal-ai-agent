@@ -38,14 +38,12 @@ AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
 MIN_SIGNING_KEY_LENGTH = 16
 
 
-def get_flight_data_signing_key() -> Optional[str]:
+def get_flight_data_signing_key() -> str:
     signing_key = os.getenv("FLIGHT_DATA_SIGNING_KEY")
     if not signing_key:
-        warnings.warn(
-            "FLIGHT_DATA_SIGNING_KEY is not configured; flight data integrity hashes will use unsigned SHA-256 digests.",
-            stacklevel=2,
+        raise RuntimeError(
+            "FLIGHT_DATA_SIGNING_KEY must be configured; refusing to start without signed flight data integrity protection."
         )
-        return None
     if len(signing_key) < MIN_SIGNING_KEY_LENGTH:
         warnings.warn(
             f"FLIGHT_DATA_SIGNING_KEY is shorter than {MIN_SIGNING_KEY_LENGTH} characters; use a longer secret for stronger integrity protection.",
