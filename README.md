@@ -85,6 +85,17 @@ The production deployment includes:
       -d '{"prompt":"hello","stealth":true}' http://localhost:8000/v1/chat
    ```
 
+7. Stream flight updates in real time:
+   ```bash
+   curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+     -d '{"flight_id":"AB123","event_type":"position_update","priority":"high","scenario":"precision","payload":{"lat":37.62,"lon":-122.38}}' \
+     http://localhost:8000/v1/flight-events
+   ```
+   Connect a WebSocket client to `ws://localhost:8000/ws/flight-events` and optionally filter with query parameters such as
+   `flight_ids=AB123`, `event_types=position_update`, `scenarios=precision,stealth-edge`,
+   `priorities=high,critical`, or `min_priority=high`. Clients can also send
+   `{"action":"subscribe","filters":{...}}` to update filters without reconnecting.
+
 Or run in CLI mode:
    ```bash
    python main.py
