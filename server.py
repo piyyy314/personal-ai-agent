@@ -127,7 +127,13 @@ class FlightPointRequest(BaseModel):
 
 
 class FlightIngestRequest(BaseModel):
-    flight_id: str = Field(..., min_length=1)
+    flight_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._-]+$",
+        description="Path-safe flight identifier used in /v1/flight-data/{flight_id}.",
+    )
     callsign: Optional[str] = None
     tail_number: Optional[str] = None
     aircraft_type: Optional[str] = None
