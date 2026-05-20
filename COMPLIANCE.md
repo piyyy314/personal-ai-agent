@@ -133,11 +133,11 @@ jq -r 'select(.session_id == "USER_SESSION_ID")' /var/log/agent/audit.log
 ### Audit Logging
 
 **What is Logged:**
-- All user queries (metadata only)
-- System events
-- Configuration changes
-- Access attempts
-- Security events
+- User query metadata only (for example query length and source)
+- Response metadata (for example latency, status, and response length)
+- System lifecycle events
+- Access attempts and authentication failures
+- Security classifications such as suspicious-query detections
 - Errors and exceptions
 
 **Log Format:**
@@ -157,6 +157,8 @@ jq -r 'select(.session_id == "USER_SESSION_ID")' /var/log/agent/audit.log
   }
 }
 ```
+
+The implementation intentionally keeps sensitive prompt contents out of the default audit stream. Store only the metadata needed for investigations, compliance evidence, and response-quality analysis.
 
 **Log Integrity:**
 - Immutable log storage
@@ -387,6 +389,12 @@ See INCIDENT_RESPONSE.md for detailed procedures.
 - Approval required for production changes
 - Rollback procedures defined
 - Testing requirements
+
+### Defensive Operations Workflows
+- Use authenticated API access for analyst-driven interactions
+- Use the separate health and metrics service for passive observation during investigations
+- Preserve audit logs and Prometheus metrics before making containment changes
+- Keep "stealth" investigations read-only whenever possible; do not disable logging or tamper with retention controls
 
 ### Record Retention
 - Security logs: 1 year minimum

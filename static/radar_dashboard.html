@@ -300,6 +300,8 @@ function drawRadarSweep() {
   const grad2 = ctx.createLinearGradient(x, y, x + radius, y);
   grad2.addColorStop(0, 'rgba(0,212,255,0.0)');
   grad2.addColorStop(1, 'rgba(0,212,255,0.18)');
+  // Sweep arc (manual because conical gradient is not universally supported)
+  const arcLen = Math.PI / 2.5;
 
   ctx.save();
   ctx.translate(x, y);
@@ -404,6 +406,11 @@ function upsertMarker(ac) {
     m.on('click', e => {
       const pt = map.latLngToContainerPoint(e.latlng);
       showTooltip(ac, pt.x, pt.y);
+      // Always look up the current aircraft state so tooltip reflects latest data,
+      // not the stale closure captured at marker creation time.
+      const current = state.aircraft[ac.icao] || ac;
+      const pt = map.latLngToContainerPoint(e.latlng);
+      showTooltip(current, pt.x, pt.y);
       L.DomEvent.stopPropagation(e);
     });
     m.addTo(map);
@@ -424,6 +431,11 @@ function upsertMarker(ac) {
   if (state.showTracks && ac.track && ac.track.length > 1) {
     if (trackLines[ac.icao]) {
       trackLines[ac.icao].setLatLngs(ac.track);
+      // Refresh color and dash style in case threat_label or signature changed.
+      trackLines[ac.icao].setStyle({
+        color: threatColor(ac.threat_label),
+        dashArray: ac.signature === 'stealth' ? '3,5' : null,
+      });
     } else {
       const color = threatColor(ac.threat_label);
       const line = L.polyline(ac.track, {
@@ -634,6 +646,9 @@ function connectWS() {
 function handleMessage(msg) {
   if (msg.type === 'snapshot') {
     // Full initial snapshot
+    // Full initial snapshot — clear any stale state/markers before applying.
+    Object.keys(state.aircraft).forEach(icao => removeMarker(icao));
+    state.aircraft  = {};
     state.geofences = msg.geofences || [];
     state.events    = msg.events    || [];
     state.analytics = msg.analytics || {};
@@ -681,10 +696,23 @@ async function fetchFallback() {
   try {
     const [acResp, evResp, anResp] = await Promise.all([
       fetch('/radar/aircraft'), fetch('/radar/events'), fetch('/radar/analytics'),
+    const [acResp, evResp, anResp, gfResp] = await Promise.all([
+      fetch('/radar/aircraft'), fetch('/radar/events'), fetch('/radar/analytics'),
+      fetch('/radar/geofences'),
     ]);
     const acData = await acResp.json();
     const evData = await evResp.json();
     const anData = await anResp.json();
+    const gfData = await gfResp.json();
+
+    // Remove aircraft that are no longer in the latest snapshot.
+    const freshIcaos = new Set((acData.aircraft || []).map(ac => ac.icao));
+    Object.keys(state.aircraft).forEach(icao => {
+      if (!freshIcaos.has(icao)) {
+        removeMarker(icao);
+        delete state.aircraft[icao];
+      }
+    });
 
     acData.aircraft.forEach(ac => {
       state.aircraft[ac.icao] = ac;
@@ -692,6 +720,8 @@ async function fetchFallback() {
     });
     state.events    = evData.events || [];
     state.analytics = anData;
+    state.geofences = gfData.geofences || [];
+    renderGeofences();
 
     renderThreatList();
     renderAnalytics();

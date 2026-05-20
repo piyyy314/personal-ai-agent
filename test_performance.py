@@ -50,6 +50,12 @@ class PerformanceTests(unittest.TestCase):
         self.assertEqual(64, len(stored_key))
 
     def test_cached_replies_skip_repeat_primary_agent_work(self):
+        """Cache hits are only allowed for stealth (stateless) requests.
+
+        Standard requests use conversation memory, so the same prompt can
+        produce different answers depending on conversation state.  Caching
+        standard responses would serve stale, context-specific answers.
+        """
         primary = FakeAgent("primary")
         stealth = FakeAgent("stealth")
         wrapper = PerformanceTunedAgent(
@@ -64,6 +70,18 @@ class PerformanceTests(unittest.TestCase):
         self.assertFalse(first["cache_hit"])
         self.assertTrue(second["cache_hit"])
         self.assertEqual(1, len(primary.calls))
+        # Stealth requests are stateless and should be cached.
+        first_stealth = wrapper.invoke({"input": "hello", "stealth": True})
+        second_stealth = wrapper.invoke({"input": "hello", "stealth": True})
+        self.assertFalse(first_stealth["cache_hit"])
+        self.assertTrue(second_stealth["cache_hit"])
+        self.assertEqual(1, len(stealth.calls))
+
+        # Standard requests are NOT cached to avoid serving stale memory-dependent responses.
+        first_std = wrapper.invoke({"input": "hello", "stealth": False})
+        second_std = wrapper.invoke({"input": "hello", "stealth": False})
+        self.assertFalse(first_std["cache_hit"])
+        self.assertFalse(second_std["cache_hit"])
 
     def test_negative_cache_settings_raise_value_error(self):
         with self.assertRaises(ValueError):

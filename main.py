@@ -53,6 +53,7 @@ def main():
                 record_security_event(suspicious)
                 audit_event("suspicious_query", {"pattern": suspicious})
 
+            audit_event("query", {"query_length": len(query), "source": "cli"})
             start_time = timer()
             try:
                 result = agent.invoke({"input": query, "stealth": stealth})
@@ -66,6 +67,11 @@ def main():
                         "status": "success",
                         "stealth": stealth,
                         "cache_hit": bool(result.get("cache_hit")),
+                        "outcome": "success",
+                        "stealth": stealth,
+                        "cache_hit": bool(result.get("cache_hit")),
+                        "response_length": len(response),
+                        "source": "cli",
                     },
                 )
                 if result.get("cache_hit"):
@@ -80,7 +86,7 @@ def main():
                     "response",
                     {
                         "latency_ms": round(duration * 1000, 2),
-                        "status": "error",
+                        "outcome": "error",
                         "error": str(run_error),
                     },
                 )

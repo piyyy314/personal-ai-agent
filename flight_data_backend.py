@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""
+Flight data ingestion, normalization, and analytics backend.
+
+Architecture note
+-----------------
+This module uses a **process-local, in-memory** store.  In a multi-replica
+deployment (e.g. Kubernetes with >1 pod) data written to one pod is NOT visible
+to other pods.  This is intentional for the current single-node / dev topology;
+switch to a shared-storage backend (Redis, database) before scaling out.
+"""
 import hashlib
 import hmac
 import json
@@ -7,6 +17,18 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Dict, Iterable, List, Optional
 
+
+# ---------------------------------------------------------------------------
+# Limits (bounded in-memory growth)
+# ---------------------------------------------------------------------------
+
+MAX_FLIGHTS = 10_000          # maximum number of distinct flight records kept
+MAX_POINTS_PER_FLIGHT = 5_000 # maximum normalised telemetry points per flight
+
+
+# ---------------------------------------------------------------------------
+# Unit-conversion constants
+# ---------------------------------------------------------------------------
 
 EARTH_RADIUS_NM = 3440.065
 FEET_PER_METER = 3.28084
@@ -18,6 +40,10 @@ NORMAL_OBSERVABILITY_INDEX = 0.8
 HIGH_SPEED_THRESHOLD_KTS = 450
 LOW_ALTITUDE_THRESHOLD_FT = 10000
 
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _parse_timestamp(value: str) -> datetime:
     normalized = value.replace("Z", "+00:00")
@@ -229,6 +255,59 @@ class FlightDataService:
         normalized_points: List[Dict[str, object]] = []
         previous_point: Optional[Dict[str, object]] = None
         for point in points:
+# ---------------------------------------------------------------------------
+# Service
+# ---------------------------------------------------------------------------
+
+class FlightDataService:
+    """Thread-safe, in-memory flight data store.
+
+    Bounded by ``MAX_FLIGHTS`` total entries and ``MAX_POINTS_PER_FLIGHT``
+    telemetry points per flight.  Oldest flights are evicted when the flight
+    limit is reached (LRU-style via insertion-order dict).
+
+    Signing key is **required** – pass the value of the
+    ``FLIGHT_DATA_SIGNING_KEY`` environment variable.
+    """
+
+    def __init__(self, signing_key: str) -> None:
+        if not signing_key:
+            raise ValueError(
+                "signing_key is required; set FLIGHT_DATA_SIGNING_KEY in the environment."
+            )
+        self._signing_key = signing_key.encode("utf-8")
+        self._store: Dict[str, Dict[str, object]] = {}
+        self._lock = Lock()
+
+    # ------------------------------------------------------------------
+    # Integrity
+    # ------------------------------------------------------------------
+
+    def _integrity_hash(self, payload: Dict[str, object]) -> str:
+        """HMAC-SHA256 of the *serialised* payload using the configured signing key."""
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        return hmac.new(self._signing_key, serialized, hashlib.sha256).hexdigest()
+
+    # ------------------------------------------------------------------
+    # Ingest
+    # ------------------------------------------------------------------
+
+    def ingest(self, payload: Dict[str, object]) -> Dict[str, object]:
+        """Normalise and store a batch of telemetry points, returning the snapshot."""
+        raw_points = list(payload["points"])
+        if not raw_points:
+            raise ValueError("points must include at least one sample")
+
+        # Sort incoming points by timestamp so rates and latest_state are correct
+        # even when a batch arrives out of order.
+        raw_points.sort(key=lambda p: _parse_timestamp(str(p["timestamp"])))
+
+        stealth_mode = bool(payload.get("stealth_mode", False))
+        normalized_points: List[Dict[str, object]] = []
+        previous_point: Optional[Dict[str, object]] = None
+        for point in raw_points:
             normalized = _normalize_point(point, previous_point)
             normalized_points.append(normalized)
             previous_point = normalized
@@ -237,6 +316,21 @@ class FlightDataService:
         latest_state = _serialize_point(normalized_points[-1], stealth_mode)
         flight_id = str(payload["flight_id"])
         snapshot = {
+
+        # latest_state is derived from the point with the highest timestamp
+        # (already guaranteed by the sort above – last element is newest).
+        latest_state = _serialize_point(normalized_points[-1], stealth_mode)
+
+        flight_id = str(payload["flight_id"])
+
+        # Stealth: exclude metadata to prevent identifier leakage through
+        # arbitrary client-supplied fields.
+        if stealth_mode:
+            metadata: Dict[str, object] = {}
+        else:
+            metadata = dict(payload.get("metadata", {}))
+
+        snapshot: Dict[str, object] = {
             "flight_id": flight_id,
             "callsign": str(payload["callsign"]) if payload.get("callsign") else None,
             "tail_number": str(payload["tail_number"])
@@ -255,6 +349,15 @@ class FlightDataService:
             "analytics": analytics,
             "metadata": dict(payload.get("metadata", {})),
         }
+            "metadata": metadata,
+        }
+
+        # Apply identifier masking before computing the integrity hash so that
+        # the hash corresponds to the exact payload that will be returned.
+        if stealth_mode:
+            snapshot["callsign"] = _mask_identifier(snapshot["callsign"])  # type: ignore[arg-type]
+            snapshot["tail_number"] = _mask_identifier(snapshot["tail_number"])  # type: ignore[arg-type]
+
         snapshot["security"] = {
             "data_classification": "restricted" if stealth_mode else "internal",
             "integrity_hash": self._integrity_hash(snapshot),
@@ -267,6 +370,28 @@ class FlightDataService:
             self._store[flight_id] = stored_snapshot
 
         return self.get_flight(flight_id)
+            existing = self._store.get(flight_id)
+            stored_snapshot = dict(snapshot)
+
+            if existing:
+                # Merge with existing point history, cap at MAX_POINTS_PER_FLIGHT
+                prior_points: List[Dict[str, object]] = existing.get("normalized_points", [])  # type: ignore[assignment]
+                merged = prior_points + normalized_points
+                stored_snapshot["normalized_points"] = merged[-MAX_POINTS_PER_FLIGHT:]
+            else:
+                stored_snapshot["normalized_points"] = normalized_points[-MAX_POINTS_PER_FLIGHT:]
+                # Evict oldest entry if the flight limit is reached
+                if len(self._store) >= MAX_FLIGHTS:
+                    oldest_key = next(iter(self._store))
+                    del self._store[oldest_key]
+
+            self._store[flight_id] = stored_snapshot
+
+        return self._build_public_view(flight_id)
+
+    # ------------------------------------------------------------------
+    # Read
+    # ------------------------------------------------------------------
 
     def get_flight(self, flight_id: str) -> Dict[str, object]:
         with self._lock:
@@ -285,3 +410,19 @@ class FlightDataService:
         with self._lock:
             flight_ids = sorted(self._store)
         return [self.get_flight(flight_id) for flight_id in flight_ids]
+        result = []
+        for fid in flight_ids:
+            try:
+                result.append(self._build_public_view(fid))
+            except KeyError:
+                # Flight was evicted between the snapshot and the view build.
+                pass
+        return result
+
+    def _build_public_view(self, flight_id: str) -> Dict[str, object]:
+        with self._lock:
+            if flight_id not in self._store:
+                raise KeyError(flight_id)
+            stored = dict(self._store[flight_id])
+        stored.pop("normalized_points", None)
+        return stored
