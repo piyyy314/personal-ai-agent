@@ -64,6 +64,9 @@ def main():
                     "response",
                     {
                         "latency_ms": round(duration * 1000, 2),
+                        "status": "success",
+                        "stealth": stealth,
+                        "cache_hit": bool(result.get("cache_hit")),
                         "outcome": "success",
                         "stealth": stealth,
                         "cache_hit": bool(result.get("cache_hit")),

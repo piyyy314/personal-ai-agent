@@ -33,6 +33,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field as PydanticField, field_validator
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 try:
@@ -539,6 +542,7 @@ async def serve_dashboard() -> FileResponse:
 async def get_aircraft(
     threat: Optional[str] = None,
     origin: Optional[str] = None,
+    limit: int = 200,
     limit: int = Query(default=200, ge=1, le=1000),
     _: None = Depends(_require_radar_api_key),
 ) -> JSONResponse:
@@ -547,6 +551,7 @@ async def get_aircraft(
     Query params:
     - threat  : filter by threat_label (CLEAR|MONITOR|SUSPECT|HOSTILE)
     - origin  : filter by 2-letter country code
+    - limit   : max records returned (default 200)
     - limit   : max records returned (default 200, max 1000)
     """
     results = list(_aircraft.values())
@@ -559,6 +564,7 @@ async def get_aircraft(
 
 
 @router.get("/threats")
+async def get_threats() -> JSONResponse:
 async def get_threats(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     """Return ranked threat assessments (SUSPECT and HOSTILE contacts)."""
     aircraft_snapshot = list(_aircraft.values())
@@ -574,12 +580,14 @@ async def get_threats(_: None = Depends(_require_radar_api_key)) -> JSONResponse
 
 
 @router.get("/analytics")
+async def get_analytics() -> JSONResponse:
 async def get_analytics(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     """Return aggregated radar analytics."""
     return JSONResponse(_build_analytics())
 
 
 @router.get("/geofences")
+async def get_geofences() -> JSONResponse:
 async def get_geofences(_: None = Depends(_require_radar_api_key)) -> JSONResponse:
     return JSONResponse({
         "count": len(_geofences),
@@ -609,6 +617,20 @@ class GeofenceRequest(BaseModel):
     radius_nm: float = PydanticField(default=50.0, gt=0, le=2000.0)
     alert_level: str = PydanticField(default="WARNING")
 
+    @field_validator("alert_level")
+    @classmethod
+    def validate_alert_level(cls, v: str) -> str:
+        upper = v.upper()
+        if upper not in _ALERT_LEVELS:
+            raise ValueError(f"alert_level must be one of {sorted(_ALERT_LEVELS)}")
+        return upper
+
+
+@router.post("/geofences")
+async def create_geofence(body: GeofenceRequest) -> JSONResponse:
+    """Create a new geofence zone."""
+    gz = GeofenceZone(
+        zone_id=f"GF{random.randint(100, 999)}",
     if _PYDANTIC_V2:
         @field_validator("alert_level")  # type: ignore[misc]
         @classmethod
@@ -649,6 +671,7 @@ async def create_geofence(
 
 
 @router.get("/events")
+async def get_events(limit: int = 50) -> JSONResponse:
 async def get_events(
     limit: int = Query(default=50, ge=1, le=500),
     _: None = Depends(_require_radar_api_key),
@@ -668,6 +691,7 @@ async def get_events(
 
 @router.websocket("/ws")
 async def websocket_stream(ws: WebSocket) -> None:
+    """Real-time push stream of aircraft positions and analytics."""
     """Real-time push stream of aircraft positions and analytics.
 
     Authentication: pass the API key as the ``api_key`` query parameter or

@@ -232,6 +232,29 @@ def _serialize_point(point: Dict[str, object], stealth_mode: bool) -> Dict[str, 
     return serialized
 
 
+class FlightDataService:
+    def __init__(self, signing_key: Optional[str] = None):
+        self._signing_key = signing_key.encode("utf-8") if signing_key else None
+        self._store: Dict[str, Dict[str, object]] = {}
+        self._lock = Lock()
+
+    def _integrity_hash(self, payload: Dict[str, object]) -> str:
+        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        if self._signing_key:
+            return hmac.new(self._signing_key, serialized, hashlib.sha256).hexdigest()
+        return hashlib.sha256(serialized).hexdigest()
+
+    def ingest(self, payload: Dict[str, object]) -> Dict[str, object]:
+        points = list(payload["points"])
+        if not points:
+            raise ValueError("points must include at least one sample")
+
+        stealth_mode = bool(payload.get("stealth_mode", False))
+        normalized_points: List[Dict[str, object]] = []
+        previous_point: Optional[Dict[str, object]] = None
+        for point in points:
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
@@ -290,6 +313,9 @@ class FlightDataService:
             previous_point = normalized
 
         analytics = _build_analytics(normalized_points, stealth_mode)
+        latest_state = _serialize_point(normalized_points[-1], stealth_mode)
+        flight_id = str(payload["flight_id"])
+        snapshot = {
 
         # latest_state is derived from the point with the highest timestamp
         # (already guaranteed by the sort above – last element is newest).
@@ -321,6 +347,8 @@ class FlightDataService:
                 _serialize_point(point, stealth_mode) for point in normalized_points[-10:]
             ],
             "analytics": analytics,
+            "metadata": dict(payload.get("metadata", {})),
+        }
             "metadata": metadata,
         }
 
@@ -337,6 +365,11 @@ class FlightDataService:
         }
 
         with self._lock:
+            stored_snapshot = dict(snapshot)
+            stored_snapshot["normalized_points"] = normalized_points
+            self._store[flight_id] = stored_snapshot
+
+        return self.get_flight(flight_id)
             existing = self._store.get(flight_id)
             stored_snapshot = dict(snapshot)
 
@@ -366,12 +399,17 @@ class FlightDataService:
                 raise KeyError(flight_id)
             stored = dict(self._store[flight_id])
 
+        if stored["stealth_mode"]:
+            stored["callsign"] = _mask_identifier(stored["callsign"])
+            stored["tail_number"] = _mask_identifier(stored["tail_number"])
+
         stored.pop("normalized_points", None)
         return stored
 
     def list_flights(self) -> List[Dict[str, object]]:
         with self._lock:
             flight_ids = sorted(self._store)
+        return [self.get_flight(flight_id) for flight_id in flight_ids]
         result = []
         for fid in flight_ids:
             try:

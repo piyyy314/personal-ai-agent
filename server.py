@@ -7,6 +7,15 @@ import asyncio
 import json
 import math
 import os
+import warnings
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Dict, List, Literal, Optional
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 import random
 import threading
 import time
@@ -28,6 +37,7 @@ from aircraft_visualization import (
     render_aircraft_visualization,
 )
 from dotenv import load_dotenv
+from flight_data_backend import FlightDataService
 from health_server import start_health_server
 from monitoring import (
     audit_event,
@@ -41,6 +51,7 @@ from monitoring import (
 )
 from flight_data_backend import FlightDataService
 from prometheus_client import CONTENT_TYPE_LATEST
+from radar_api import router as radar_router, radar_shutdown, radar_startup_async
 from radar_api import router as radar_router, radar_startup_async, radar_shutdown
 
 
@@ -48,6 +59,18 @@ load_dotenv()
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 AUTH_DISABLED = os.getenv("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
+MIN_SIGNING_KEY_LENGTH = 16
+
+
+def get_flight_data_signing_key() -> str:
+    signing_key = os.getenv("FLIGHT_DATA_SIGNING_KEY")
+    if not signing_key:
+        raise RuntimeError(
+            "FLIGHT_DATA_SIGNING_KEY must be configured; refusing to start without signed flight data integrity protection."
+        )
+    if len(signing_key) < MIN_SIGNING_KEY_LENGTH:
+        warnings.warn(
+            f"FLIGHT_DATA_SIGNING_KEY is shorter than {MIN_SIGNING_KEY_LENGTH} characters; use a longer secret for stronger integrity protection.",
 PRIORITY_ORDER = {"low": 0, "normal": 1, "high": 2, "critical": 3}
 _MIN_SIGNING_KEY_LENGTH = 16
 
@@ -73,6 +96,7 @@ def _get_flight_data_signing_key() -> str:
     return signing_key
 
 
+flight_data_service = FlightDataService(signing_key=get_flight_data_signing_key())
 flight_data_service = FlightDataService(signing_key=_get_flight_data_signing_key())
 
 
@@ -88,6 +112,25 @@ async def lifespan(app: FastAPI):
     set_session_status(False)
     audit_event("shutdown", {"mode": "api"})
     await radar_shutdown()
+    health_server.shutdown()
+
+
+app = FastAPI(title="Personal AI Agent", version="1.0.0", lifespan=lifespan)
+agent = None
+
+# ── Static files & radar dashboard ────────────────────────────────
+_static_dir = Path(__file__).parent / "static"
+_static_dir.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+# ── Radar API router ───────────────────────────────────────────────
+app.include_router(radar_router)
+
+
+@app.get("/dashboard", include_in_schema=False)
+async def dashboard_redirect() -> RedirectResponse:
+    """Redirect top-level /dashboard to the radar ops-center dashboard."""
+    return RedirectResponse(url="/radar/dashboard")
     if health_server is not None:
         health_server.shutdown()
         if hasattr(health_server, "server_close"):
@@ -135,6 +178,17 @@ class ChatResponse(BaseModel):
 
 class FlightPointRequest(BaseModel):
     timestamp: str
+    latitude: float = Field(..., ge=-90.0, le=90.0, allow_inf_nan=False)
+    longitude: float = Field(..., ge=-180.0, le=180.0, allow_inf_nan=False)
+    altitude: float = Field(..., allow_inf_nan=False)
+    altitude_unit: Literal["ft", "m"] = "ft"
+    speed: float = Field(..., allow_inf_nan=False)
+    speed_unit: Literal["kts", "kmh", "mph"] = "kts"
+    heading: float = Field(..., ge=0.0, lt=360.0, allow_inf_nan=False)
+    vertical_rate: Optional[float] = Field(default=None, allow_inf_nan=False)
+    vertical_rate_unit: Literal["fpm", "mps"] = "fpm"
+    transponder: Literal["on", "off", "unknown"] = "unknown"
+    signature: Optional[float] = Field(default=None, ge=0.0, le=1.0, allow_inf_nan=False)
     latitude: float = Field(..., ge=-90.0, le=90.0)
     longitude: float = Field(..., ge=-180.0, le=180.0)
     altitude: float
@@ -166,6 +220,19 @@ class FlightIngestRequest(BaseModel):
     points: List[FlightPointRequest]
 
 
+def get_agent_instance():
+    global agent
+    if agent is None:
+        from agent import create_agent
+
+        agent = create_agent()
+    return agent
+
+
+def model_to_dict(model: BaseModel) -> Dict[str, object]:
+    if hasattr(model, "model_dump"):
+        return model.model_dump()
+    return model.dict()
 class FlightAnalysisRequest(BaseModel):
     flights: List[Dict[str, Any]] = Field(default_factory=list)
     events: List[Dict[str, Any]] = Field(default_factory=list)
@@ -490,6 +557,43 @@ async def metrics() -> Response:
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
 
 
+@app.post("/v1/flight-data")
+async def ingest_flight_data(
+    request: FlightIngestRequest, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    try:
+        snapshot = flight_data_service.ingest(model_to_dict(request))
+    except ValueError as validation_error:
+        raise HTTPException(status_code=422, detail=str(validation_error)) from validation_error
+
+    audit_event(
+        "flight_data_ingested",
+        {
+            "flight_id": snapshot["flight_id"],
+            "records_ingested": snapshot["records_ingested"],
+            "stealth_mode": snapshot["stealth_mode"],
+        },
+    )
+    return JSONResponse(content=snapshot)
+
+
+@app.get("/v1/flight-data")
+async def list_flight_data(_: None = Depends(require_api_key)) -> JSONResponse:
+    snapshots = flight_data_service.list_flights()
+    return JSONResponse(content={"items": snapshots, "count": len(snapshots)})
+
+
+@app.get("/v1/flight-data/{flight_id}")
+async def get_flight_data(
+    flight_id: str, _: None = Depends(require_api_key)
+) -> JSONResponse:
+    try:
+        snapshot = flight_data_service.get_flight(flight_id)
+    except KeyError as missing_flight:
+        raise HTTPException(status_code=404, detail="Flight not found") from missing_flight
+    return JSONResponse(content=snapshot)
+
+
 @app.post("/v1/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest, _: None = Depends(require_api_key)
@@ -502,6 +606,17 @@ async def chat(
     audit_event("query", {"query_length": len(request.prompt), "source": "api"})
     start_time = timer()
     try:
+        runtime_agent = get_agent_instance()
+    except RuntimeError as init_error:
+        record_security_event("agent_unavailable")
+        audit_event("agent_unavailable", {"error": str(init_error), "source": "api"})
+        raise HTTPException(
+            status_code=503,
+            detail="Chat agent unavailable; configure OPENAI_API_KEY to enable /v1/chat.",
+        ) from init_error
+
+    try:
+        result = runtime_agent.invoke(
         result = get_agent().invoke(
             {
                 "input": request.prompt,

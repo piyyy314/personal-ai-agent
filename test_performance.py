@@ -64,6 +64,12 @@ class PerformanceTests(unittest.TestCase):
             response_cache=PrivacyAwareResponseCache(max_entries=4, ttl_seconds=60),
         )
 
+        first = wrapper.invoke({"input": "hello"})
+        second = wrapper.invoke({"input": "hello"})
+
+        self.assertFalse(first["cache_hit"])
+        self.assertTrue(second["cache_hit"])
+        self.assertEqual(1, len(primary.calls))
         # Stealth requests are stateless and should be cached.
         first_stealth = wrapper.invoke({"input": "hello", "stealth": True})
         second_stealth = wrapper.invoke({"input": "hello", "stealth": True})

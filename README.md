@@ -21,11 +21,15 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - **Historical Flight Replay**: Encrypted-at-rest aircraft movement history with indexed replay/timeline analysis
 - **High Availability**: Kubernetes deployment, health checks, auto-restart
 - **Incident Response**: Forensic tools, emergency procedures, runbooks
+- **Flight Data Backend**: Batch ingestion, unit normalization, analytic overlays, and redaction-oriented stealth handling for sensitive telemetry
 
 ## 🚀 Ways to Run
 
 ### Option 1: FastAPI service (production-ready, monitored)
 - Requires OpenAI key (or swap LLM implementation).
+- Exposes `/v1/chat`, `/v1/flight-data`, `/healthz`, and `/metrics` for Prometheus.
+- Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
+- The flight-data endpoints can run without `OPENAI_API_KEY`; `/v1/chat` stays disabled until the chat model is configured.
 - API runs on port 8000, health checks on port 8080
 - Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
 - Set `FLIGHT_DATA_SIGNING_KEY` in `.env` (required; see `.env.example`).
@@ -114,6 +118,28 @@ The production deployment includes:
    ```bash
    curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
       -d '{"prompt":"hello","stealth":true}' http://localhost:8000/v1/chat
+   ```
+
+   ```bash
+   curl -H "x-api-key: $API_AUTH_TOKEN" -H "Content-Type: application/json" \
+      -d '{
+        "flight_id": "track-001",
+        "callsign": "N123AA",
+        "stealth_mode": true,
+        "points": [
+          {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "latitude": 33.9425,
+            "longitude": -118.4081,
+            "altitude": 3200,
+            "speed": 280,
+            "heading": 90,
+            "transponder": "off",
+            "signature": 0.2,
+            "source": "radar"
+          }
+        ]
+      }' http://localhost:8000/v1/flight-data
    ```
 
 7. Stream flight updates in real time:

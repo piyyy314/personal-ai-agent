@@ -4,10 +4,18 @@ Local AI agent using Ollama with bounded memory and privacy-aware caching.
 """
 import json
 import os
+from typing import Any
 from typing import Any, List
 
 from dotenv import load_dotenv
 from flight_analysis import analyze_flight_operations
+
+from monitoring import record_cache_event, record_stealth_request, set_cache_entries
+from performance import (
+    PerformanceTunedAgent,
+    PrivacyAwareResponseCache,
+    get_validated_env_int,
+)
 
 from monitoring import record_cache_event, record_stealth_request, set_cache_entries
 from performance import (
@@ -27,6 +35,37 @@ except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements_local.txt") from e
 
 DEFAULT_MEMORY_WINDOW_TURNS = 6
+
+
+def _build_tools(llm: Any) -> list[Any]:
+    """Build the reusable tool list for the Ollama-backed local agent."""
+    llm_math = LLMMathChain.from_llm(llm=llm)
+    return [
+        Tool(
+            name="Calculator",
+            func=llm_math.run,
+            description="Performs multi-step math calculations.",
+        )
+    ]
+
+
+def _build_agent_executor(memory_enabled: bool) -> Any:
+    """Construct a local agent executor with optional bounded memory."""
+    model_name = os.getenv("OLLAMA_MODEL", "qwen2:7b")
+    llm = Ollama(
+        model=model_name,
+        temperature=0.2,
+        base_url="http://localhost:11434",
+    )
+    memory = None
+    if memory_enabled:
+        memory = ConversationBufferWindowMemory(
+            k=get_validated_env_int(
+                "AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW_TURNS, minimum=1
+            ),
+            memory_key="chat_history",
+            return_messages=True,
+        )
 
 
 def _build_tools(llm: Any) -> List[Any]:

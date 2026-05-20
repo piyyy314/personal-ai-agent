@@ -4,10 +4,18 @@ Builds a LangChain agent with privacy-aware caching and low-footprint execution.
 """
 import json
 import os
+from typing import Any
 from typing import Any, List
 
 from dotenv import load_dotenv
 from flight_analysis import analyze_flight_operations
+
+from monitoring import record_cache_event, record_stealth_request, set_cache_entries
+from performance import (
+    PerformanceTunedAgent,
+    PrivacyAwareResponseCache,
+    get_validated_env_int,
+)
 
 from monitoring import record_cache_event, record_stealth_request, set_cache_entries
 from performance import (
@@ -30,6 +38,10 @@ except Exception as e:
 
 DEFAULT_MEMORY_WINDOW_TURNS = 6
 
+
+def _build_tools(llm: Any) -> list[Any]:
+    """Build the reusable tool list for the hosted OpenAI-backed agent."""
+    tools = []
 
 def _build_tools(llm: Any) -> List[Any]:
     """Build the reusable tool list for the hosted OpenAI-backed agent."""
@@ -96,6 +108,22 @@ def _build_tools(llm: Any) -> List[Any]:
         )
     )
     return tools
+
+
+def _build_agent_executor(memory_enabled: bool) -> Any:
+    """Construct an agent executor with optional bounded conversation memory."""
+    llm = OpenAI(temperature=0, max_tokens=800)
+    tools = _build_tools(llm)
+    memory = None
+    if memory_enabled:
+        memory = ConversationBufferWindowMemory(
+            k=get_validated_env_int(
+                "AGENT_MEMORY_WINDOW", DEFAULT_MEMORY_WINDOW_TURNS, minimum=1
+            ),
+            memory_key="chat_history",
+            return_messages=True,
+        )
+
 
 
 def _build_agent_executor(memory_enabled: bool) -> Any:

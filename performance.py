@@ -164,6 +164,7 @@ class PerformanceTunedAgent:
         if stealth and self._on_stealth_request:
             self._on_stealth_request()
 
+        if use_cache and self._response_cache:
         # Cache is only safe for stateless (stealth) requests.  Standard
         # requests use an agent with conversation memory, so the same prompt
         # can produce different answers depending on prior turns or which API
@@ -181,6 +182,7 @@ class PerformanceTunedAgent:
         agent = self._resolve_agent(stealth)
         result = self._normalize_result(agent.invoke(request))
         output = result["output"]
+        if use_cache and self._response_cache and isinstance(output, str):
         if cache_eligible and self._response_cache and isinstance(output, str):
             self._response_cache.set(prompt, output, stealth=stealth)
 
