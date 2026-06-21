@@ -31,6 +31,9 @@ try:
     from langchain.chains import LLMMathChain
     from langchain.memory import ConversationBufferWindowMemory
     from langchain_community.llms import Ollama
+    from langchain.memory import ConversationBufferMemory
+    from langchain.agents import initialize_agent, Tool, AgentType
+    from langchain.chains import LLMMathChain
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements_local.txt") from e
 
@@ -57,6 +60,13 @@ def _build_agent_executor(memory_enabled: bool) -> Any:
         temperature=0.2,
         base_url="http://localhost:11434",
     )
+    
+    # Tools
+    tools = []
+    
+    # Math tool
+    llm_math = LLMMathChain.from_llm(llm=llm)
+    tools.append(
     memory = None
     if memory_enabled:
         memory = ConversationBufferWindowMemory(

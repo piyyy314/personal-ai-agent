@@ -6,6 +6,59 @@ security/anomaly tracking for the personal AI agent.
 import json
 import logging
 import os
+from datetime import datetime
+from typing import Dict, Any
+import json
+
+# Configure structured logging
+class StructuredLogger:
+    """Structured logger for compliance and audit requirements"""
+
+    def __init__(self, name: str, log_level: str = "INFO"):
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(getattr(logging, log_level.upper()))
+
+        # Console handler with JSON formatting
+        handler = logging.StreamHandler()
+        handler.setFormatter(JsonFormatter())
+        self.logger.addHandler(handler)
+
+        # File handler for audit logs (create directory if needed)
+        log_dir = os.getenv("LOG_DIR", "/var/log/agent")
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            audit_handler = logging.FileHandler(os.path.join(log_dir, "audit.log"))
+            audit_handler.setFormatter(JsonFormatter())
+            self.logger.addHandler(audit_handler)
+        except OSError:
+            # Fall back to console-only logging if the directory can't be created
+            self.logger.warning("Audit file logging unavailable: could not create %s", log_dir)
+
+    def log_event(self, event_type: str, message: str, level: str = "info", **kwargs):
+        """Log structured event with metadata"""
+        log_data = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "event_type": event_type,
+            "message": message,
+            "user_id": kwargs.get("user_id", "system"),
+            "session_id": kwargs.get("session_id"),
+            "metadata": kwargs
+        }
+
+        log_func = getattr(self.logger, level.lower())
+        log_func(json.dumps(log_data))
+
+    def audit_log(self, action: str, resource: str, outcome: str, **kwargs):
+        """Log audit events for compliance"""
+        self.log_event(
+            event_type="audit",
+            message=f"{action} on {resource}: {outcome}",
+            level="info",
+            action=action,
+            resource=resource,
+            outcome=outcome,
+            **kwargs
+        )
 import re
 import time
 from typing import Dict, Optional

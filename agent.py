@@ -27,6 +27,12 @@ from performance import (
 load_dotenv()
 
 try:
+    # LangChain imports (community package for integrations)
+    from langchain_openai import OpenAI
+    from langchain.memory import ConversationBufferMemory
+    from langchain.agents import initialize_agent, Tool, AgentType
+    from langchain.chains import LLMMathChain
+    from langchain_community.utilities import SerpAPIWrapper
     # LangChain imports
     from langchain.agents import AgentType, Tool, initialize_agent
     from langchain.chains import LLMMathChain
@@ -87,6 +93,7 @@ def _build_tools(llm: Any) -> List[Any]:
             )
         )
 
+    # Math tool (uses the LLM's math chain)
     tools.append(
         Tool(
             name="FlightIntel",
