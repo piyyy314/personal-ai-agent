@@ -12,7 +12,7 @@ try:
     from langchain_community.llms import Ollama
     from langchain.memory import ConversationBufferMemory
     from langchain.agents import initialize_agent, Tool, AgentType
-    from langchain.chains.llm_math import LLMMathChain
+    from langchain.chains import LLMMathChain
 except Exception as e:
     raise ImportError("Missing dependencies. Run: pip install -r requirements_local.txt") from e
 
@@ -43,7 +43,7 @@ def create_agent():
     tools = []
     
     # Math tool
-    llm_math = LLMMathChain(llm=llm)
+    llm_math = LLMMathChain.from_llm(llm=llm)
     tools.append(
         Tool(
             name="Calculator",
