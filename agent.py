@@ -10,7 +10,7 @@ load_dotenv()
 
 try:
     # LangChain imports (community package for integrations)
-    from langchain_community.llms import OpenAI
+    from langchain_openai import OpenAI
     from langchain.memory import ConversationBufferMemory
     from langchain.agents import initialize_agent, Tool, AgentType
     from langchain.chains import LLMMathChain

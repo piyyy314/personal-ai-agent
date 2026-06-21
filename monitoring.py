@@ -32,7 +32,7 @@ class StructuredLogger:
             self.logger.addHandler(audit_handler)
         except OSError:
             # Fall back to console-only logging if the directory can't be created
-            pass
+            self.logger.warning("Audit file logging unavailable: could not create %s", log_dir)
 
     def log_event(self, event_type: str, message: str, level: str = "info", **kwargs):
         """Log structured event with metadata"""
