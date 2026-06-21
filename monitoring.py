@@ -23,10 +23,16 @@ class StructuredLogger:
         handler.setFormatter(JsonFormatter())
         self.logger.addHandler(handler)
 
-        # File handler for audit logs
-        audit_handler = logging.FileHandler("/var/log/agent/audit.log")
-        audit_handler.setFormatter(JsonFormatter())
-        self.logger.addHandler(audit_handler)
+        # File handler for audit logs (create directory if needed)
+        log_dir = os.getenv("LOG_DIR", "/var/log/agent")
+        try:
+            os.makedirs(log_dir, exist_ok=True)
+            audit_handler = logging.FileHandler(os.path.join(log_dir, "audit.log"))
+            audit_handler.setFormatter(JsonFormatter())
+            self.logger.addHandler(audit_handler)
+        except OSError:
+            # Fall back to console-only logging if the directory can't be created
+            self.logger.warning("Audit file logging unavailable: could not create %s", log_dir)
 
     def log_event(self, event_type: str, message: str, level: str = "info", **kwargs):
         """Log structured event with metadata"""
