@@ -15,7 +15,7 @@ groups:
           runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/agent-down"
 
       - alert: HighErrorRate
-        expr: rate(agent_requests_failed[5m]) / rate(agent_requests_total[5m]) > 0.1
+        expr: sum(rate(agent_requests_total{status="error"}[5m])) / sum(rate(agent_requests_total[5m])) > 0.1
         for: 5m
         labels:
           severity: critical
@@ -26,7 +26,7 @@ groups:
           runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/high-error-rate"
 
       - alert: ComplianceViolation
-        expr: increase(agent_compliance_violations[5m]) > 0
+        expr: increase(agent_compliance_violations_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -37,7 +37,7 @@ groups:
           runbook: "https://github.com/piyyy314/personal-ai-agent/wiki/runbooks/compliance-violation"
 
       - alert: SecurityEvent
-        expr: increase(agent_security_events[5m]) > 0
+        expr: increase(agent_security_events_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -49,7 +49,7 @@ groups:
 
       # Warning Alerts
       - alert: HighResponseTime
-        expr: agent_response_time_seconds_sum / agent_response_time_seconds_count > 5
+        expr: rate(agent_request_latency_seconds_sum[5m]) / rate(agent_request_latency_seconds_count[5m]) > 5
         for: 10m
         labels:
           severity: warning
@@ -91,3 +91,4 @@ groups:
         annotations:
           summary: "New deployment detected"
           description: "Agent has been restarted, uptime reset detected."
+
