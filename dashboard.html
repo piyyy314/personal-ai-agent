@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Advanced Radar Dashboard</title>
+  <style>
+    :root {
+      --bg: #04070e;
+      --panel: #0b1220;
+      --accent: #6af7d1;
+      --warning: #ffc257;
+      --danger: #ff6f6f;
+      --text: #d8ecff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+      background: radial-gradient(circle at top, #0b1a2f 0%, var(--bg) 50%);
+      color: var(--text);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(360px, 420px) 1fr;
+      min-height: 100vh;
+      gap: 12px;
+      padding: 12px;
+    }
+    .panel {
+      background: rgba(11, 18, 32, 0.92);
+      border: 1px solid rgba(106, 247, 209, 0.2);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .controls h2,
+    .telemetry h2 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    label {
+      display: block;
+      font-size: 0.78rem;
+      margin-bottom: 4px;
+      opacity: 0.9;
+    }
+    input, select {
+      width: 100%;
+      background: #0c172a;
+      color: var(--text);
+      border: 1px solid rgba(106, 247, 209, 0.35);
+      border-radius: 8px;
+      padding: 7px;
+    }
+    .toggles {
+      margin-top: 10px;
+      display: grid;
+      gap: 8px;
+      font-size: 0.9rem;
+    }
+    .toggles label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      cursor: pointer;
+    }
+    .map-wrap {
+      position: relative;
+      background: #050d1b;
+      border-radius: 12px;
+      border: 1px solid rgba(106, 247, 209, 0.2);
+      overflow: hidden;
+    }
+    #radar {
+      width: 100%;
+      height: calc(100vh - 24px);
+      display: block;
+    }
+    .map-overlay {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      font-size: 0.84rem;
+      display: grid;
+      gap: 3px;
+      background: rgba(2, 9, 16, 0.74);
+      border: 1px solid rgba(106, 247, 209, 0.4);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 0.86rem;
+      color: #9be6ff;
+    }
+    .telemetry pre {
+      margin: 0;
+      max-height: 32vh;
+      overflow: auto;
+      background: rgba(0, 0, 0, 0.28);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 0.78rem;
+      border: 1px solid rgba(106, 247, 209, 0.2);
+    }
+    .danger { color: var(--danger); }
+    .warn { color: var(--warning); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel controls">
+      <h2>Analytic Controls</h2>
+      <div class="control-grid">
+        <div>
+          <label for="precision">Precision Selection</label>
+          <select id="precision">
+            <option value="coarse">Coarse</option>
+            <option value="standard" selected>Standard</option>
+            <option value="fine">Fine</option>
+          </select>
+        </div>
+        <div>
+          <label for="typeFilter">Aircraft Type</label>
+          <select id="typeFilter">
+            <option value="all" selected>All</option>
+            <option value="commercial">Commercial</option>
+            <option value="cargo">Cargo</option>
+            <option value="military">Military</option>
+            <option value="private">Private</option>
+            <option value="drone">Drone</option>
+          </select>
+        </div>
+        <div>
+          <label for="altMin">Min Altitude (ft)</label>
+          <input id="altMin" type="number" value="0" min="0" step="500" />
+        </div>
+        <div>
+          <label for="altMax">Max Altitude (ft)</label>
+          <input id="altMax" type="number" value="45000" min="0" step="500" />
+        </div>
+        <div>
+          <label for="speedMin">Min Speed (kts)</label>
+          <input id="speedMin" type="number" value="0" min="0" step="10" />
+        </div>
+        <div>
+          <label for="speedMax">Max Speed (kts)</label>
+          <input id="speedMax" type="number" value="700" min="0" step="10" />
+        </div>
+        <div style="grid-column: span 2;">
+          <label for="search">Call Sign Filter</label>
+          <input id="search" type="text" placeholder="e.g. PX42" />
+        </div>
+      </div>
+      <div class="toggles">
+        <label><input id="showStealth" type="checkbox" checked /> Show Stealth Flights</label>
+        <label><input id="overlayTracks" type="checkbox" checked /> Overlay: Flight Tracks</label>
+        <label><input id="overlayThreat" type="checkbox" checked /> Overlay: Threat Rings</label>
+        <label><input id="overlayHeat" type="checkbox" checked /> Overlay: Density Heat</label>
+      </div>
+      <div class="status" id="status">Waiting for live feed…</div>
+      <section class="panel telemetry" style="margin-top: 12px;">
+        <h2>Selection Telemetry</h2>
+        <pre id="selection">None</pre>
+      </section>
+    </aside>
+    <main class="map-wrap">
+      <canvas id="radar"></canvas>
+      <div class="map-overlay">
+        <div><strong>OPS VIEW:</strong> Interactive Radar / Analytic Map</div>
+        <div id="refreshInfo">Range: 100nm • Refresh: --</div>
+        <div id="meta">Filtered: 0 aircraft</div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("radar");
+    const ctx = canvas.getContext("2d");
+    const selectionNode = document.getElementById("selection");
+    const statusNode = document.getElementById("status");
+    const metaNode = document.getElementById("meta");
+    const refreshInfoNode = document.getElementById("refreshInfo");
+    const LIVE_REFRESH_MS = 2000;
+    const DEFAULT_RANGE_NM = 100;
+    const DEFAULT_MAX_ALTITUDE_FILTER = Number.MAX_SAFE_INTEGER;
+    const DEFAULT_MAX_SPEED_FILTER = Number.MAX_SAFE_INTEGER;
+    const TRAIL_HISTORY_LENGTH = 8;
+    const PRECISION_PICK_DISTANCE_PX = { coarse: 18, standard: 12, fine: 7 };
+    const controls = {
+      precision: document.getElementById("precision"),
+      typeFilter: document.getElementById("typeFilter"),
+      altMin: document.getElementById("altMin"),
+      altMax: document.getElementById("altMax"),
+      speedMin: document.getElementById("speedMin"),
+      speedMax: document.getElementById("speedMax"),
+      search: document.getElementById("search"),
+      showStealth: document.getElementById("showStealth"),
+      overlayTracks: document.getElementById("overlayTracks"),
+      overlayThreat: document.getElementById("overlayThreat"),
+      overlayHeat: document.getElementById("overlayHeat"),
+    };
+
+    let aircraft = [];
+    let filtered = [];
+    let selectedId = null;
+    const trailMap = new Map();
+    function renderRefreshInfo(rangeNm = DEFAULT_RANGE_NM) {
+      return `Range: ${rangeNm}nm • Refresh: ${(LIVE_REFRESH_MS / 1000).toFixed(0)}s`;
+    }
+    refreshInfoNode.textContent = renderRefreshInfo(DEFAULT_RANGE_NM);
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    function worldToCanvas(x, y) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const scale = Math.min(rect.width, rect.height) / 220;
+      return { x: cx + x * scale, y: cy - y * scale };
+    }
+
+    function drawRadarBackdrop() {
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const maxRadius = Math.min(rect.width, rect.height) * 0.45;
+      ctx.strokeStyle = "rgba(106,247,209,0.34)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 5; i++) {
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, (maxRadius / 5) * i, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      for (let deg = 0; deg < 360; deg += 30) {
+        const rad = (deg * Math.PI) / 180;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(centerX + Math.cos(rad) * maxRadius, centerY + Math.sin(rad) * maxRadius);
+        ctx.stroke();
+      }
+    }
+
+    function draw() {
+      drawRadarBackdrop();
+      if (controls.overlayHeat.checked) {
+        for (const ac of filtered) {
+          const pos = worldToCanvas(ac.x, ac.y);
+          const gradient = ctx.createRadialGradient(pos.x, pos.y, 1, pos.x, pos.y, 28);
+          gradient.addColorStop(0, "rgba(236, 120, 255, 0.36)");
+          gradient.addColorStop(1, "rgba(236, 120, 255, 0)");
+          ctx.fillStyle = gradient;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 28, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      for (const ac of filtered) {
+        const pos = worldToCanvas(ac.x, ac.y);
+        const isSelected = ac.id === selectedId;
+        if (controls.overlayTracks.checked) {
+          const trail = trailMap.get(ac.id) || [];
+          trailMap.set(ac.id, [...trail.slice(-TRAIL_HISTORY_LENGTH), [ac.x, ac.y]]);
+          ctx.strokeStyle = "rgba(106,247,209,0.22)";
+          ctx.beginPath();
+          trailMap.get(ac.id).forEach(([tx, ty], index) => {
+            const tPos = worldToCanvas(tx, ty);
+            if (index === 0) ctx.moveTo(tPos.x, tPos.y);
+            else ctx.lineTo(tPos.x, tPos.y);
+          });
+          ctx.stroke();
+        }
+
+        if (controls.overlayThreat.checked && (ac.type === "military" || ac.stealth)) {
+          ctx.strokeStyle = "rgba(255,111,111,0.5)";
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, ac.stealth ? 20 : 14, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = ac.stealth ? "#ff6f6f" : "#6af7d1";
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, isSelected ? 6 : 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = isSelected ? "#ffffff" : "#9be6ff";
+        ctx.font = "11px Inter, Arial, sans-serif";
+        ctx.fillText(`${ac.call_sign} ${Math.round(ac.altitude_ft)}ft`, pos.x + 7, pos.y - 7);
+      }
+      metaNode.textContent = `Filtered: ${filtered.length} aircraft`;
+    }
+
+    function toNumber(value, fallback) {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function applyFilters() {
+      const query = controls.search.value.trim().toLowerCase();
+      const altMin = toNumber(controls.altMin.value, 0);
+      const altMax = toNumber(controls.altMax.value, DEFAULT_MAX_ALTITUDE_FILTER);
+      const speedMin = toNumber(controls.speedMin.value, 0);
+      const speedMax = toNumber(controls.speedMax.value, DEFAULT_MAX_SPEED_FILTER);
+      filtered = aircraft.filter((ac) => {
+        if (!controls.showStealth.checked && ac.stealth) return false;
+        if (controls.typeFilter.value !== "all" && ac.type !== controls.typeFilter.value) return false;
+        if (ac.altitude_ft < altMin || ac.altitude_ft > altMax) return false;
+        if (ac.speed_kts < speedMin || ac.speed_kts > speedMax) return false;
+        if (query && !ac.call_sign.toLowerCase().includes(query)) return false;
+        return true;
+      });
+      if (!filtered.some((ac) => ac.id === selectedId)) selectedId = null;
+      updateSelection();
+      draw();
+    }
+
+    function updateSelection() {
+      const selected = filtered.find((ac) => ac.id === selectedId);
+      if (!selected) {
+        selectionNode.textContent = "None";
+        return;
+      }
+      const tags = [];
+      if (selected.stealth) tags.push("stealth");
+      if (selected.type === "military") tags.push("military");
+      selectionNode.innerHTML =
+        `ID: ${selected.id}\n` +
+        `Call Sign: ${selected.call_sign}\n` +
+        `Type: ${selected.type}\n` +
+        `Altitude: ${Math.round(selected.altitude_ft)} ft\n` +
+        `Speed: ${Math.round(selected.speed_kts)} kts\n` +
+        `Heading: ${Math.round(selected.heading)}°\n` +
+        `Position: (${selected.x.toFixed(1)}, ${selected.y.toFixed(1)}) nm\n` +
+        `Risk Tags: ${tags.length ? tags.join(", ") : "none"}`;
+    }
+
+    async function refreshLiveData() {
+      try {
+        const response = await fetch("/v1/aircraft/live", { cache: "no-store" });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(`HTTP ${response.status}: ${detail || "feed request failed"}`);
+        }
+        const payload = await response.json();
+        aircraft = payload.aircraft || [];
+        statusNode.textContent = `Live feed ok • ${new Date(payload.updated_at).toLocaleTimeString()}`;
+        refreshInfoNode.textContent = renderRefreshInfo(payload.range_nm || DEFAULT_RANGE_NM);
+        applyFilters();
+      } catch (error) {
+        statusNode.innerHTML = `<span class="danger">Feed error:</span> ${error.message || "Network error"}`;
+      }
+    }
+
+    canvas.addEventListener("click", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+      const pickRadius = PRECISION_PICK_DISTANCE_PX[controls.precision.value] || 12;
+      let picked = null;
+      let bestDistance = Infinity;
+      for (const ac of filtered) {
+        const pos = worldToCanvas(ac.x, ac.y);
+        const d = Math.hypot(pos.x - clickX, pos.y - clickY);
+        if (d <= pickRadius && d < bestDistance) {
+          picked = ac;
+          bestDistance = d;
+        }
+      }
+      selectedId = picked ? picked.id : null;
+      updateSelection();
+      draw();
+    });
+
+    for (const element of Object.values(controls)) {
+      element.addEventListener("input", applyFilters);
+      element.addEventListener("change", applyFilters);
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+    refreshLiveData();
+    setInterval(refreshLiveData, LIVE_REFRESH_MS);
+  </script>
+</body>
+</html>

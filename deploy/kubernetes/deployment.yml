@@ -25,6 +25,7 @@ stringData:
   # Replace these with actual values or use external secrets management
   OPENAI_API_KEY: "your-openai-api-key"
   SERPAPI_API_KEY: "your-serpapi-key"
+  API_AUTH_TOKEN: "your-api-auth-token"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -86,6 +87,9 @@ spec:
 
         # Ports
         ports:
+        - name: api
+          containerPort: 8000
+          protocol: TCP
         - name: health
           containerPort: 8080
           protocol: TCP
@@ -158,6 +162,10 @@ spec:
   selector:
     app: ai-agent
   ports:
+  - name: api
+    port: 8000
+    targetPort: api
+    protocol: TCP
   - name: health
     port: 8080
     targetPort: health

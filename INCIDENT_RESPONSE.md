@@ -348,6 +348,8 @@ Security Operations Center: [Email]
 
 ## Stealth Access Protocols
 
+The goal of "stealth" mode is quiet, read-only observation for authorized defenders. It is not meant to suppress audit trails or bypass approval requirements.
+
 ### Emergency Access
 
 For critical incidents requiring immediate access without triggering normal alerting:
@@ -371,17 +373,17 @@ For critical incidents requiring immediate access without triggering normal aler
 
 1. **Silent monitoring**
    ```bash
-   # View logs without alerts
-   kubectl logs -n ai-agent -l app=ai-agent --tail=100 -f > /dev/null
+   # Review recent logs directly; reading logs is passive, and visible output helps preserve operator awareness
+   kubectl logs -n ai-agent -l app=ai-agent --tail=100
 
-   # Query metrics without triggering alerts
+   # Query metrics from the dedicated health/metrics service
    curl -s http://localhost:8080/metrics | grep -v "scrape"
    ```
 
 2. **Passive observation**
    - Use read-only Grafana dashboards
-   - Monitor Prometheus without queries
-   - Review stored logs
+   - Prefer stored Prometheus data over ad-hoc changes to alert rules
+   - Review stored audit logs and incident timelines
 
 ## Compliance and Legal Considerations
 

@@ -1,0 +1,104 @@
+import unittest
+
+from aircraft_visualization import (
+    AircraftSnapshot,
+    build_aircraft_analysis,
+    normalize_heading,
+    render_aircraft_visualization,
+)
+
+
+class AircraftVisualizationTests(unittest.TestCase):
+    def test_heading_is_normalized_into_compass_range(self):
+        self.assertEqual(normalize_heading(725), 5)
+        self.assertEqual(normalize_heading(360), 0)
+        self.assertEqual(normalize_heading(-90), 270)
+
+    def test_analysis_reports_advanced_and_security_views(self):
+        analysis = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=450,
+                speed_kts=410,
+                heading_deg=210,
+                stealth_enabled=False,
+            )
+        )
+
+        self.assertEqual(analysis["advanced"]["altitude_band"], "nap-of-earth")
+        self.assertEqual(analysis["basic"]["heading_sector"], "SW")
+        self.assertEqual(analysis["security"]["exposure_level"], "medium")
+        self.assertIn(
+            "Stealth disabled increases radar exposure.", analysis["security"]["flags"]
+        )
+        self.assertIn(
+            "Low-altitude/high-speed ingress compresses reaction time.",
+            analysis["security"]["flags"],
+        )
+
+    def test_stealth_profile_can_report_low_exposure(self):
+        analysis = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=28000,
+                speed_kts=420,
+                heading_deg=30,
+                stealth_enabled=True,
+            )
+        )
+
+        self.assertEqual(analysis["security"]["exposure_level"], "low")
+        self.assertEqual(
+            analysis["advanced"]["general_direction"],
+            "northbound",
+        )
+
+    def test_analysis_reports_cardinal_general_direction(self):
+        northbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=350,
+                stealth_enabled=False,
+            )
+        )
+        southbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=180,
+                stealth_enabled=False,
+            )
+        )
+        westbound = build_aircraft_analysis(
+            AircraftSnapshot(
+                altitude_ft=12000,
+                speed_kts=300,
+                heading_deg=270,
+                stealth_enabled=False,
+            )
+        )
+
+        self.assertEqual(northbound["advanced"]["general_direction"], "northbound")
+        self.assertEqual(southbound["advanced"]["general_direction"], "southbound")
+        self.assertEqual(westbound["advanced"]["general_direction"], "westbound")
+
+    def test_html_render_contains_visualization_modules(self):
+        html = render_aircraft_visualization(
+            AircraftSnapshot(
+                altitude_ft=38000,
+                speed_kts=520,
+                heading_deg=45,
+                stealth_enabled=True,
+            )
+        )
+
+        self.assertIn("Altitude Module", html)
+        self.assertIn("Speed Module", html)
+        self.assertIn("Heading Module", html)
+        self.assertIn("Stealth Module", html)
+        self.assertIn("Security-Focused View", html)
+        self.assertIn("name=\"stealth\"", html)
+        self.assertIn("avoid entering sensitive telemetry data", html)
+
+
+if __name__ == "__main__":
+    unittest.main()

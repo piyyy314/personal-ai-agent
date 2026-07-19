@@ -5,8 +5,13 @@ Runs on port 8080 to provide /health, /ready, and /metrics endpoints.
 """
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+import logging
 import threading
-from monitoring import health, metrics, logger
+
+from monitoring import is_session_running, metrics_response
+from prometheus_client import CONTENT_TYPE_LATEST
+
+logger = logging.getLogger(__name__)
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -14,11 +19,7 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         """Override to use structured logging"""
-        logger.log_event(
-            event_type="http_request",
-            message=f"{self.address_string()} - {format % args}",
-            level="debug"
-        )
+        logger.debug("%s - %s", self.address_string(), format % args)
 
     def do_GET(self):
         """Handle GET requests"""
@@ -35,18 +36,21 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_health(self):
         """Liveness probe endpoint"""
-        health_status = health.check_health()
-        status_code = 200 if health_status["status"] == "healthy" else 503
+        health_status = {"status": "healthy"}
 
-        self.send_response(status_code)
+        self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(health_status, indent=2).encode())
 
     def handle_ready(self):
         """Readiness probe endpoint"""
-        ready_status = health.check_readiness()
-        status_code = 200 if ready_status["status"] == "ready" else 503
+        if is_session_running():
+            ready_status = {"status": "ready"}
+            status_code = 200
+        else:
+            ready_status = {"status": "not_ready"}
+            status_code = 503
 
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
@@ -55,12 +59,12 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def handle_metrics(self):
         """Prometheus metrics endpoint"""
-        metrics_data = metrics.get_prometheus_format()
+        metrics_data = metrics_response()
 
         self.send_response(200)
-        self.send_header("Content-Type", "text/plain; version=0.0.4")
+        self.send_header("Content-Type", CONTENT_TYPE_LATEST)
         self.end_headers()
-        self.wfile.write(metrics_data.encode())
+        self.wfile.write(metrics_data)
 
     def handle_root(self):
         """Root endpoint with available endpoints"""
@@ -84,12 +88,7 @@ def start_health_server(port: int = 8080):
     server = HTTPServer(("0.0.0.0", port), HealthHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    logger.log_event(
-        event_type="health_server_started",
-        message=f"Health check server started on port {port}",
-        level="info",
-        port=port
-    )
+    logger.info("Health check server started on port %d", port)
     return server
 
 
@@ -104,3 +103,4 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt:
         print("\nShutting down...")
+
