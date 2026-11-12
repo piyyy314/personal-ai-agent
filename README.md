@@ -31,7 +31,6 @@ This project contains a production-ready personal AI agent using LangChain, feat
 - Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
 - The flight-data endpoints can run without `OPENAI_API_KEY`; `/v1/chat` stays disabled until the chat model is configured.
 - API runs on port 8000, health checks on port 8080
-- Set `API_AUTH_TOKEN` in `.env` to protect the API; set `AUTH_DISABLED=true` to opt out in dev.
 - Set `FLIGHT_DATA_SIGNING_KEY` in `.env` (required; see `.env.example`).
 
 #### API endpoints
